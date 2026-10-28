@@ -235,3 +235,30 @@ tr.click:hover td{background:#faf6ec}
 .link{color:var(--accentInk)}
 .drawer .pane{background:var(--bg)}
 #gate .logo{background:var(--accent);color:var(--pine)}
+
+/* Pedidos: 5 colunas que cabem na largura (1100–1920 px) sem rolagem lateral */
+.kb5{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;padding-bottom:12px}
+.kb5 .col{padding:10px;min-width:0}
+.kb5 .col h4{flex-wrap:wrap;margin:2px 2px 10px}
+.kb5 .kc{padding:10px;font-size:12.5px;overflow-wrap:anywhere}
+.kb5 .kc .meta{flex-wrap:wrap}
+.kc .kact{display:flex;justify-content:flex-end;margin-top:8px}
+.kc .kact .btn{padding:4px 9px;font-size:12px}
+.kc.done .kact{justify-content:flex-start}
+/* Curva ABC do almoxarifado */
+.curva{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:5px;font-size:10.5px;font-weight:600;vertical-align:1px;margin-left:4px}
+.curva.cA{background:var(--accentSoft);color:var(--accentInk)} .curva.cB{background:var(--blueSoft);color:#46617c} .curva.cC{background:var(--cream2);color:var(--muted)}
+/* Aba que ainda não existe (obra em orçamento) */
+.vazio{max-width:620px;margin:24px auto;text-align:center;padding:40px 36px}
+.vazio>.ic{color:var(--accent);margin-bottom:6px}
+.vazio h3{justify-content:center}
+.vazio p{margin:0 0 18px;line-height:1.6}
+td .pill{white-space:nowrap}
+/* Com Diário e Medições a barra tem 9 abas: em 1100 px ela rola por dentro, nunca alarga a página. */
+.main>*{min-width:0}
+.tabs{overflow-x:auto;scrollbar-width:none} .tabs::-webkit-scrollbar{display:none}
+.tab{flex:none}
+.chatwrap{grid-template-columns:248px minmax(0,1fr)} .chat{min-width:0}
+.msg .row{flex-wrap:wrap}
+/* Sugestões numa linha só: três linhas de chips comiam metade da conversa. */
+.chips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none} .chips::-webkit-scrollbar{display:none} .chip{flex:none}

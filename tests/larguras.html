@@ -1,0 +1,20 @@
+<!doctype html><body><pre id="out">rodando</pre><script>
+const routes=['home','hub','estoque','fluxos','aprovacoes','campo','obra/vila-nova/chat','obra/vila-nova/overview','obra/vila-nova/componentes','obra/vila-nova/kanban','obra/vila-nova/inventario','obra/vila-nova/equipe','obra/vila-nova/prazos','obra/vila-nova/diario','obra/vila-nova/medicoes','obra/loja-centro/chat','obra/loja-centro/overview','obra/loja-centro/inventario','obra/loja-centro/kanban','obra/loja-centro/prazos','obra/loja-centro/diario','obra/galpao/chat','obra/galpao/overview'];
+const widths=[1100,1366,1920]; const res=[];
+async function run(){ for(const w of widths) for(const r of routes){
+  const f=document.createElement('iframe'); f.style.width=w+'px'; f.style.height='900px'; document.body.appendChild(f);
+  await new Promise(ok=>{f.onload=ok; f.src='/index.html?a='+Math.random()+'#'+r;});
+  const errs=[]; f.contentWindow.onerror=m=>errs.push(m);
+  await new Promise(ok=>setTimeout(ok,200));
+  const d=f.contentDocument, m=d.querySelector('.main');
+  const over=m.scrollWidth-m.clientWidth, docOver=d.documentElement.scrollWidth-w;
+  const txt=m.innerText;
+  if(over>0||docOver>0) res.push(`QUEBRA ${w} ${r} +${Math.max(over,docOver)}`);
+  if(errs.length) res.push(`ERRO ${w} ${r}: ${errs[0]}`);
+  if(w===1366){ const bad=['Budget','budget','Workspaces','Kanban','checkout','Marcos','almox','MVP','Componentes','Inventário'].filter(t=>txt.includes(t)); if(bad.length) res.push(`TERMO ${r}: ${bad.join(', ')}`);
+    const em=txt.match(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u); if(em) res.push(`EMOJI ${r}: ${em[0]}`);
+    if(/NaN|undefined|\[object/.test(txt)) res.push(`LIXO ${r}: `+txt.match(/.{0,30}(NaN|undefined|\[object).{0,20}/)[0]); }
+  f.remove(); }
+  document.getElementById('out').textContent='FIM\n'+(res.join('\n')||'tudo ok'); }
+run();
+</script>
