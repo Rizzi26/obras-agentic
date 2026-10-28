@@ -7,16 +7,19 @@
 <title>Canteiro · agente de obras (protótipo)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#faf9f5; --card:#fff; --cream:#f5f4ee; --cream2:#efede5;
-  --ink:#1f1e1d; --ink2:#3d3c39; --muted:#75736c; --faint:#a29f96; --line:#e6e3d9; --line2:#efede6;
-  --side:#f3f1ea; --sideHover:#ebe8df; --sideOn:#e6e2d7;
-  --accent:#c6613f; --accentHi:#d97757; --accentSoft:#f9eee8; --accentInk:#a14d30;
-  --green:#5b8364; --greenSoft:#ebf1ea; --red:#b5513f; --redSoft:#f8ebe6;
-  --amber:#b8862f; --amberSoft:#f7f0df; --blue:#5b7a99; --blueSoft:#ebf0f4; --violet:#8a7ca8;
-  --serif:"Newsreader","Source Serif 4",Georgia,"Times New Roman",serif;
+  /* Identidade Canteiro: concreto, verde-grafite e ocre de obra. */
+  --bg:#ebe9e3; --card:#fff; --cream:#f4f3ef; --cream2:#e4e2db;
+  --ink:#1a201e; --ink2:#323a37; --muted:#626c68; --faint:#8d9692; --line:#d9d6cd; --line2:#ebe9e3;
+  --side:#1c2a27; --sideHover:#253632; --sideOn:#2e423d;
+  --accent:#e09a2b; --accentHi:#eaaa45; --accentSoft:#fbefd9; --accentInk:#8f5a0c;
+  --pine:#1c2a27; --pineSoft:#e5eeea; --pineLine:#c6d8d0;
+  --green:#2f8a5b; --greenSoft:#e2f2e8; --red:#c4473b; --redSoft:#fbe8e5;
+  --amber:#b7791f; --amberSoft:#fbf1dc; --blue:#3f6f9a; --blueSoft:#e5eef6; --violet:#7a64b0;
+  --serif:"Bricolage Grotesque","Inter",-apple-system,sans-serif;
+  --shadow:0 1px 2px rgba(26,32,30,.06),0 2px 8px rgba(26,32,30,.04);
   --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   --r:12px;
 }
@@ -177,6 +180,65 @@ label.l{display:block;font-size:12.5px;color:var(--muted);margin:14px 0 5px;font
   #gate .logo{margin:0 auto 22px;width:52px;height:52px;border-radius:14px;background:var(--accentSoft)}
   #gate .meta{margin-top:24px;padding-top:16px;border-top:1px solid var(--line);font-size:12.5px;color:var(--faint)}
 }
+/* ===== camada de identidade (sobrepõe a base) ===== */
+h1,h2{font-weight:600;letter-spacing:-.02em}
+.side{background:var(--side);border-right:0;color:#c5cfcb}
+.brand{color:#fff;font-weight:700;letter-spacing:-.02em}
+.brand .tag{color:#9fb0aa;border-color:#3a4c47}
+.logo{background:var(--accent);color:var(--pine);border-radius:8px;width:30px;height:30px}
+.logo svg{width:18px;height:18px}
+.side .sec{color:#7d8e88;text-transform:uppercase;font-size:10.5px;letter-spacing:.08em;font-weight:600}
+.nav{color:#c5cfcb} .nav .ic{color:#8a9b95}
+.nav:hover{background:var(--sideHover)} .nav.on{background:var(--sideOn);color:#fff;box-shadow:inset 3px 0 0 var(--accent)} .nav.on .ic{color:var(--accent)}
+.nav small{color:#7d8e88}
+.nav .count{background:var(--accent);color:var(--pine)}
+.newbtn{color:#9fb0aa} .newbtn:hover{background:var(--sideHover);color:#fff}
+.side .foot{border-top-color:#2e423d;color:#e6ecea} .side .foot .mut,.side .foot span{color:#8a9b95}
+.av{background:var(--accent);color:var(--pine)}
+.fict{background:rgba(224,154,43,.12);color:#f1c983;border:1px solid rgba(224,154,43,.25)} .fict .ic{color:var(--accent)}
+.toggle{background:#3a4c47} .notes .toggle{background:var(--accent)}
+.top{background:#fff;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.top + .tabs{background:#fff;margin-top:-1px;padding-top:14px}
+.top:has(+ .tabs){border-bottom:0;padding-bottom:0}
+.top h1{font-size:28px}
+.tab.on{border-bottom-color:var(--accent);color:var(--ink);font-weight:600} .tab.on .ic{color:var(--accentInk);opacity:1}
+.card{border-color:var(--line);box-shadow:var(--shadow)}
+.card h3{font-weight:600;font-size:17px} .card h3 .ic{color:var(--accentInk)}
+.kpi{border-top:3px solid var(--pine)}
+.kpi .v{font-weight:600;font-size:28px}
+th{background:var(--cream);color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+tr.click:hover td{background:#faf6ec}
+.btn{border-color:var(--line);box-shadow:0 1px 1px rgba(26,32,30,.04)} .btn:hover{background:var(--cream);border-color:#c9c5ba}
+.btn.amb{background:var(--accent);border-color:var(--accent);color:var(--pine);font-weight:600} .btn.amb:hover{background:var(--accentHi);border-color:var(--accentHi)}
+.bar{background:var(--cream2)} .bar i{background:var(--accent)}
+/* chat: resposta do agente em cartão, bolha do usuário escura */
+.msg.me{background:var(--pine);color:#eef3f1;border-radius:16px 16px 4px 16px}
+.msg.me .attach{background:#2e423d;border-color:#3a4c47;color:#dfe7e4}
+.msg.ai .bub{background:#fff;border:1px solid var(--line);border-radius:4px 16px 16px 16px;padding:14px 18px;box-shadow:var(--shadow)}
+.aiav{background:var(--pine);color:var(--accent);border-radius:8px;width:30px;height:30px}
+.aiav svg{width:17px;height:17px}
+.tools{color:var(--muted)} .tools span{background:var(--cream);border:1px solid var(--line2);padding:1px 8px;border-radius:99px}
+.composer{border-color:#cfcbc0;box-shadow:var(--shadow)}
+.chip{background:#fff;border-color:var(--line);color:var(--ink2)} .chip:hover{border-color:var(--accent)}
+.sessions{background:#f6f5f1}
+.sess.on{background:#fff;box-shadow:var(--shadow)}
+/* kanban */
+.col{background:#dfddd5}
+.kc{box-shadow:var(--shadow);border-color:#e1ded6}
+.kc.late{box-shadow:inset 3px 0 0 var(--red),var(--shadow)}
+/* notas do agente e de validação */
+.agentnote{background:var(--pineSoft)!important;border-color:var(--pineLine)!important}
+.agentnote h3 .ic,.agentnote > .ic{color:var(--pine)}
+.callout{background:#fff8e8;border:1px dashed #e2bd77}
+.callout b{color:var(--accentInk)}
+.steps div.on{background:var(--accent)}
+.today{background:var(--red);width:2px}
+.gtrack{background:var(--cream)}
+.toast{background:var(--pine);color:#fff}
+.wscard .name{font-weight:600}
+.link{color:var(--accentInk)}
+.drawer .pane{background:var(--bg)}
+#gate .logo{background:var(--accent);color:var(--pine)}
 </style>
 </head>
 <body class="notes">
@@ -197,7 +259,7 @@ label.l{display:block;font-size:12.5px;color:var(--muted);margin:14px 0 5px;font
 <script>
 /* ===================== ÍCONES (traço, no estilo Lucide; inline para não depender de CDN) ===================== */
 const ICONS = {
-  spark:'<path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/>',
+  spark:'<rect x="3" y="13" width="8" height="7" rx="1.2"/><rect x="13" y="13" width="8" height="7" rx="1.2"/><rect x="8" y="4" width="8" height="7" rx="1.2"/>',
   message:'<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
   building:'<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/>',
   swap:'<path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>',
@@ -245,13 +307,13 @@ const brl = v => 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:0,maxim
 const brl2 = v => 'R$ ' + v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 
 const OBRAS = [
-  {id:'vila-nova', nome:'Casa Vila Nova', tipo:'Residencial · 180 m² · 2 pav.', local:'Campinas · SP', cor:'#c6613f',
+  {id:'vila-nova', nome:'Casa Vila Nova', tipo:'Residencial · 180 m² · 2 pav.', local:'Campinas · SP', cor:'#e09a2b',
    budget:620000, previsto:648300, comprometido:286400, gasto:241850, fase:'Estrutura', progresso:38,
    inicio:'03/03/2026', prazo:'30/06/2027', previsao:'21/07/2027', atraso:21, status:'risco'},
-  {id:'loja-centro', nome:'Reforma Loja Centro', tipo:'Comercial · 95 m²', local:'Valinhos · SP', cor:'#5b7a99',
+  {id:'loja-centro', nome:'Reforma Loja Centro', tipo:'Comercial · 95 m²', local:'Valinhos · SP', cor:'#3f6f9a',
    budget:145000, previsto:139200, comprometido:118000, gasto:104300, fase:'Acabamento', progresso:81,
    inicio:'10/07/2026', prazo:'15/12/2026', previsao:'09/12/2026', atraso:-6, status:'ok'},
-  {id:'galpao', nome:'Galpão Sumaré', tipo:'Industrial · 1.200 m²', local:'Sumaré · SP', cor:'#8a7ca8',
+  {id:'galpao', nome:'Galpão Sumaré', tipo:'Industrial · 1.200 m²', local:'Sumaré · SP', cor:'#7a64b0',
    budget:2400000, previsto:null, comprometido:0, gasto:0, fase:'Planejamento', progresso:0,
    inicio:'—', prazo:'—', previsao:'—', atraso:0, status:'plan'},
 ];
@@ -611,7 +673,7 @@ function tabPrazos(o){
   </div>
   <div class="grid" style="grid-template-columns:1.6fr 1fr">
     <div class="card"><h3>Cronograma por fase <small>· semanas desde 03/03/2026</small></h3>
-      <div class="legend" style="margin-bottom:16px"><span><i style="background:#dcd8cc"></i>planejado</span><span><i style="background:var(--accentHi)"></i>real / projetado</span><span><i style="background:var(--accent);width:2px"></i>hoje (sem. 34)</span></div>
+      <div class="legend" style="margin-bottom:16px"><span><i style="background:#dcd8cc"></i>planejado</span><span><i style="background:var(--accentHi)"></i>real / projetado</span><span><i style="background:var(--red);width:2px"></i>hoje (sem. 34)</span></div>
       <div class="gantt">${FASES.map(f=>`<div>${f.n}<div class="sm mut">${f.pct}%</div></div><div class="gtrack">
         <div class="gb" style="left:${pct(f.ini)}%;width:${pct(f.fim-f.ini)}%;background:#dcd8cc;top:3px;height:7px"></div>
         <div class="gb" style="left:${pct(f.real[0])}%;width:${pct(f.real[1]-f.real[0])}%;background:${f.pct===100?'var(--green)':'var(--accentHi)'};top:13px;height:7px;opacity:${f.pct===0?.45:1}"></div>
