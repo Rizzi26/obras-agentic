@@ -1,0 +1,458 @@
+/* ===================== ESTADO / ROTAS ===================== */
+let state = {view:'home', obra:null, tab:'chat'};
+function go(view, obra, tab){ state={view, obra:obra||null, tab:tab||'chat'}; location.hash = [view,obra,tab].filter(Boolean).join('/'); render(); }
+window.onhashchange = () => { const [v,o,t]=location.hash.slice(1).split('/'); if(v){state={view:v,obra:o||null,tab:t||'chat'}; render();} };
+const $ = id => document.getElementById(id);
+function toast(t){ const e=$('toast'); e.textContent=t; e.style.display='block'; clearTimeout(e._t); e._t=setTimeout(()=>e.style.display='none',2600); }
+function obra(){ return OBRAS.find(o=>o.id===state.obra); }
+function val(texto){ return `<div class="callout val">${icon('flask')}<div><b>Validar com o gerente de obra:</b> ${texto}</div></div>`; }
+
+/* ===================== SIDEBAR ===================== */
+function renderSide(){
+  const st = o => o.status==='risco'?'var(--red)':o.status==='ok'?'var(--green)':'var(--faint)';
+  $('side').innerHTML = `
+    <div class="brand"><div class="logo">${icon('spark',22)}</div>Canteiro <span class="tag">MVP</span></div>
+    <div class="fict">${icon('info',14)}<span>Protótipo · todos os dados são fictícios e nenhum botão compra ou envia nada.</span></div>
+    <a class="nav ${state.view==='home'?'on':''}" href="#home" onclick="go('home');return false">${icon('message')}Início — agente</a>
+    <a class="nav ${state.view==='hub'?'on':''}" href="#hub" onclick="go('hub');return false">${icon('building')}Todas as obras</a>
+    <a class="nav ${state.view==='estoque'?'on':''}" href="#estoque" onclick="go('estoque');return false">${icon('swap')}Estoque entre obras<span class="count">${TRANSF.length}</span></a>
+    ${NAV_EXTRA.map(n=>`<a class="nav ${state.view===n.view?'on':''}" href="#${n.view}" onclick="go('${n.view}');return false">${icon(n.icon)}${n.label}${n.count?`<span class="count">${n.count()}</span>`:''}</a>`).join('')}
+    <div class="sec">Workspaces de obra</div>
+    ${OBRAS.map(o=>`<a class="nav ${state.obra===o.id?'on':''}" href="#" onclick="go('obra','${o.id}','chat');return false"><span class="dot" style="background:${st(o)}"></span>${o.nome}<small>${o.progresso}%</small></a>`).join('')}
+    <button class="newbtn" onclick="openWizard(1)">${icon('plus')}Nova obra</button>
+    <div class="sec">Protótipo</div>
+    <a class="nav" href="#" onclick="document.body.classList.toggle('notes');renderSide();return false">${icon('flask')}<span>Notas de validação: <b id="nt">${document.body.classList.contains('notes')?'ligadas':'desligadas'}</b></span><span class="toggle"></span></a>
+    <a class="nav ${state.view==='fluxos'?'on':''}" href="#fluxos" onclick="go('fluxos');return false">${icon('map')}Mapa de fluxos</a>
+    <div class="foot"><div class="av">RZ</div><div>Rizzi<br><span class="sm mut">Construtora RZ · Admin</span></div></div>`;
+}
+
+/* ===================== HOME: CHAT GLOBAL ===================== */
+function aiMsg(tools, html){ return `<div class="msg ai"><div class="aiav">${icon('spark',20)}</div><div class="bub">${tools?`<div class="tools">${tools.map(t=>`<span>${icon('wrench',12)}${t}</span>`).join('')}</div>`:''}${html}</div></div>`; }
+function meMsg(t){ return `<div class="msg me">${t}</div>`; }
+
+function renderHome(){
+  const ob = OBRAS[0];
+  return `
+  <div class="chat" style="height:100vh">
+    <div class="top"><h1>Bom dia, Rizzi</h1><span class="crumb">3 obras · 1 em risco de prazo · 2 alertas de estoque</span><span class="sp"></span>
+      <button class="btn" onclick="go('hub')">Ver todas as obras</button></div>
+    <div class="msgs">
+      ${val('A home é um chat que enxerga TODAS as obras. Faz sentido começar o dia por aqui, ou o gerente prefere abrir direto um painel com números?')}
+      ${aiMsg(['lendo 3 workspaces','prazos','estoque'], `<b>Resumo de hoje</b><br>
+        • <b>Casa Vila Nova</b> — previsão de entrega <b>21 dias depois</b> do prazo. Principal causa: vergalhão da Gerdau 9 dias atrasado + 2 vagas de armador abertas.<br>
+        • <b>Reforma Loja Centro</b> — 6 dias adiantada e R$ 5.800 abaixo do orçamento.<br>
+        • <b>Estoque</b>: parafuso 5/16" e vergalhão acabam esta semana na Vila Nova.<br>
+        <div class="row" style="margin-top:12px"><button class="btn" onclick="go('obra','vila-nova','prazos')">Ver prazos da Vila Nova</button><button class="btn" onclick="go('obra','vila-nova','inventario')">Ver estoque</button></div>`)}
+      ${meMsg('comprei 1000 parafusos, tem quantos no inventário? por que só tem 100 restantes, onde gastamos os outros 900?')}
+      ${aiMsg(['inventário · Casa Vila Nova','movimentações de parafuso 5/16"'], `Dos <b>1.000 parafusos 5/16" × 2"</b> recebidos em 02/10 (pedido PED-0150), restam <b>100</b>. Os 900 foram baixados assim:
+        <table><tr><th>Destino</th><th class="num">Qtd</th><th class="num">% do lote</th></tr>
+        <tr><td>Estrutura do telhado — tesouras</td><td class="num">450</td><td class="num">45%</td></tr>
+        <tr><td>Portão da garagem</td><td class="num">350</td><td class="num">35%</td></tr>
+        <tr><td>Porta principal — batente</td><td class="num">100</td><td class="num">10%</td></tr></table>
+        <div class="note"><span style="color:var(--red)">${icon('alert',15)}</span><span>O portão consumiu <b>350</b>, contra <b>180</b> previstos no projeto. Vale confirmar com o Luiz (serralheria) se houve perda ou retrabalho.</span></div>
+        O resto da obra ainda precisa de ~<b>480</b>. Com 100 em estoque, falta em ~6 dias.<br><br>
+        <div class="note"><span style="color:var(--amber)">${icon('bulb',15)}</span><span><b>Antes de comprar:</b> a <b>Reforma Loja Centro</b> tem 420 parafusos iguais e só vai usar mais 80. Dá para trazer <b>300</b> e ainda deixar 40 de reserva lá, pelo preço que ela pagou (<b>R$ 0,39/un, R$ 117</b>), chegando hoje. Os 80 que faltam eu compro na Ciser junto com o próximo pedido.</span></div>
+        <div class="row" style="margin-top:12px"><button class="btn amb" onclick="openTransfer(0)">${icon('swap',15)}Trazer 300 da Loja Centro</button><button class="btn" onclick="toast('Pedido PED-0165 aprovado → coluna Aprovado')">Prefiro comprar 500 novos</button><button class="btn" onclick="openInvItem('paraf')">Ver movimentações</button></div>`)}
+      ${meMsg('quanto tempo para acabar a Vila Nova? estamos no prazo? recomendações para otimizar')}
+      ${aiMsg(['cronograma','pedidos em trânsito','equipe alocada','histórico de produtividade'], `Pelo ritmo atual (estrutura a 62%), a entrega fica para <b>21/07/2027</b>, <b>21 dias</b> depois do prazo (30/06/2027).<br><br>
+        <b>Por que atrasa</b><br>• Fornecedor: vergalhão PED-0158 com 9 dias de atraso → segura a laje (9 dias)<br>• Equipe: 2 armadores faltando desde 01/10 → 8 dias<br>• Clima: chuvas de outubro → 4 dias<br><br>
+        <b>O que eu faria (recupera ~15 dias; as trocas de fornecedor ainda economizam ~R$ 3,4 mil)</b><br>
+        1. Comprar 120 barras na <i>Aço Forte</i> (entrega em 2 dias, +R$ 300) para não parar a laje enquanto a Gerdau não entrega. <span class="pill ok">−6 dias</span><br>
+        2. Contratar os 2 armadores por empreitada até o fim da estrutura. <span class="pill ok">−5 dias</span><br>
+        3. Adiantar a compra das telhas de Tatuí (prazo de 10 dias) para já, e não deixar para a semana 39. <span class="pill ok">−4 dias</span><br>
+        4. Trocar o bloco cerâmico do Depósito São Bento pela Cerâmica Itu (−R$ 0,27/un × 9.500). <span class="pill info">−R$ 2.565</span><br>
+        5. Juntar as compras de cimento restantes num pedido só de 220 sc (frete único). <span class="pill info">−R$ 1.100</span>
+        <div class="row" style="margin-top:12px"><button class="btn" onclick="go('obra','vila-nova','prazos')">Abrir aba Prazos</button><button class="btn" onclick="toast('Plano salvo como tarefas na obra')">Transformar em plano de ação</button></div>`)}
+    </div>
+    <div class="chips">
+      ${['Qual obra está mais acima do orçamento?','O que chega amanhã nas obras?','Quem está em campo hoje na Vila Nova?','Vai faltar cimento até a laje?','O que está sobrando numa obra e faltando em outra?','Compare fornecedores de bloco em Campinas'].map(c=>`<button class="chip" onclick="toast('(protótipo) o agente responderia aqui')">${c}</button>`).join('')}
+    </div>
+    <div class="composer">
+      <div><span class="attach">${icon('building',13)}Contexto: todas as obras ${icon('chevDown',13)}</span></div>
+      <textarea placeholder="Pergunte sobre qualquer obra, ou peça: 'cria uma obra nova com este projeto'…"></textarea>
+      <div class="row"><button class="btn sm">${icon('clip',14)}Anexar projeto / NF / foto</button><span class="sp"></span><button class="btn amb" onclick="toast('(protótipo) enviar')">Enviar ${icon('arrowUp',15)}</button></div>
+    </div>
+  </div>`;
+}
+
+/* ===================== HUB DE OBRAS ===================== */
+function renderHub(){
+  return `<div class="top"><h1>Obras</h1><span class="sp"></span><button class="btn amb" onclick="openWizard(1)">${icon('plus',15)}Nova obra</button></div>
+  <div class="page">
+    ${val('Que informação o gerente precisa ver em cada cartão para decidir onde ir primeiro? (prazo, dinheiro, estoque, equipe?)')}
+    <div class="grid g3">${OBRAS.map(o=>{
+      const pctB = o.previsto? Math.round(o.gasto/o.budget*100):0;
+      const st = o.status==='risco'?'<span class="pill bad">Risco de atraso · +21 dias</span>':o.status==='ok'?'<span class="pill ok">No prazo · −6 dias</span>':'<span class="pill gray">Planejamento</span>';
+      return `<div class="card wscard" onclick="go('obra','${o.id}','${o.status==='plan'?'chat':'overview'}')">
+        <div class="row" style="align-items:flex-start"><span style="width:8px;height:8px;border-radius:50%;background:${o.cor};margin-top:9px;flex:none"></span><span class="name">${o.nome}</span><span class="sp"></span>${st}</div>
+        <div class="mut sm" style="margin:4px 0 18px 18px">${o.tipo} · ${o.local}</div>
+        <div class="row sm"><span>Obra ${o.progresso}% · fase <b>${o.fase}</b></span></div>
+        <div class="bar" style="margin:8px 0 18px"><i style="width:${o.progresso}%;background:${o.cor}"></i></div>
+        <div class="grid g2 sm" style="gap:12px 18px"><div><div class="mut">Budget</div><b>${brl(o.budget)}</b></div><div><div class="mut">Gasto</div><b>${brl(o.gasto)}</b> <span class="mut">(${pctB}%)</span></div>
+        <div><div class="mut">Prazo</div><b>${o.prazo}</b></div><div><div class="mut">Previsão</div><b style="color:${o.atraso>0?'var(--red)':'inherit'}">${o.previsao}</b></div></div>
+      </div>`}).join('')}</div>
+  </div>`;
+}
+
+/* ===================== WORKSPACE DA OBRA ===================== */
+const TABS = [['chat','message','Chat'],['overview','chart','Visão geral e orçamento'],['componentes','bricks','Componentes e compras'],['kanban','package','Pedidos (Kanban)'],['inventario','archive','Inventário'],['equipe','users','Equipe'],['prazos','clock','Prazos']];
+
+/* Abas da obra. Funcionalidade nova entra com TABS.push([...]) e TAB_FNS.chave = fn, num arquivo
+   próprio em js/features. As setas chamam pelo nome na hora para que um feature possa redefinir
+   a função original (ex.: tabEquipe = function(o){...}). */
+const TAB_FNS = {chat:o=>tabChat(o), overview:o=>tabOverview(o), componentes:o=>tabComp(o), kanban:o=>tabKanban(o), inventario:o=>tabInv(o), equipe:o=>tabEquipe(o), prazos:o=>tabPrazos(o)};
+
+function renderObra(){
+  const o = obra();
+  const st = o.status==='risco'?'<span class="pill bad">+21 dias previstos</span>':o.status==='ok'?'<span class="pill ok">No prazo</span>':'<span class="pill gray">Planejamento</span>';
+  const body = (TAB_FNS[state.tab]||TAB_FNS.chat)(o);
+  return `<div class="top" style="align-items:flex-end"><div><div class="crumb" style="margin-bottom:4px"><a href="#hub" onclick="go('hub');return false">Obras</a> / ${o.local}</div><h1>${o.nome}</h1></div><span style="margin-bottom:5px">${st}</span><span class="sp"></span>
+      <span class="mut sm" style="margin-bottom:6px">Fase: <b style="color:var(--ink)">${o.fase}</b> · ${o.progresso}%</span></div>
+    <div class="tabs">${TABS.map(([k,ic,l])=>`<a class="tab ${state.tab===k?'on':''}" href="#" onclick="go('obra','${o.id}','${k}');return false">${icon(ic,15)}${l}</a>`).join('')}</div>
+    ${state.tab==='chat'?body:`<div class="page">${body}</div>`}`;
+}
+
+function tabChat(o){
+  const sess = o.id==='galpao'
+    ? [['Orçamento inicial','agora'],]
+    : [['Orçamento inicial','03/03'],['Compra da estrutura','12/09'],['Atraso do vergalhão','hoje'],['Dúvidas sobre o portão','21/10'],['Replanejamento da cobertura','18/10']];
+  const msgs = o.id==='galpao' ? `
+    ${meMsg(`<span class="attach">${icon('file',13)}projeto-galpao-sumare.pdf · 38 pág.</span><span class="attach">${icon('ruler',13)}planta-baixa.dwg</span><br>Galpão logístico 1.200 m², estrutura metálica, piso industrial 5 t/m². Budget R$ 2,4 mi, início em jan/2027, 7 meses. Fases: terraplenagem, fundação, estrutura metálica, fechamento, piso, instalações, entrega.`)}
+    ${aiMsg(['lendo projeto (38 pág.)','levantamento de quantitativos','cotando 64 itens em Sumaré/Campinas'], `Li o projeto. Antes de fechar o orçamento, preciso de 2 respostas:<br>1. O piso de 5 t/m² vai com <b>fibra de aço</b> ou <b>tela soldada</b>? Muda cerca de R$ 90 mil.<br>2. O fechamento lateral é <b>telha termoacústica</b> ou <b>simples</b>?<br><br><span class="mut">Prévia: com as opções mais comuns, o custo fica em R$ 2,51–2,63 mi, <b>5–10% acima do budget</b>.</span>`)}` : `
+    ${meMsg('a Gerdau confirmou nova data para o vergalhão?')}
+    ${aiMsg(['pedido PED-0158','e-mail do fornecedor'], `Ainda não. O pedido PED-0158 (300 barras, R$ 17.610) estava previsto para 19/10 e hoje está <b>9 dias atrasado</b>. O último contato foi em 24/10: "previsão sem data".<br><br>Restam <b>12 barras</b> no inventário, o que dá para ~2 dias de armação da laje do 2º pavimento.<br><b>Opção:</b> a Aço Forte (Campinas) entrega 120 barras em 2 dias por R$ 61,20/barra (+R$ 300 no total, comparado à Gerdau).
+      <div class="row" style="margin-top:12px"><button class="btn amb" onclick="openCheckout(['aco'])">Comprar 120 na Aço Forte</button><button class="btn" onclick="toast('Lembrete: cobrar Gerdau amanhã 9h')">Cobrar a Gerdau amanhã</button></div>`)}`;
+  return `<div class="chatwrap">
+    <div class="sessions"><button class="btn" style="width:100%;margin-bottom:12px;justify-content:center" onclick="toast('Nova sessão nesta obra')">${icon('plus',15)}Nova sessão</button>
+      ${sess.map((s,i)=>`<div class="sess ${i===(o.id==='galpao'?0:2)?'on':''}"><b>${s[0]}</b><span>${s[1]}</span></div>`).join('')}
+      <div class="sm mut" style="margin-top:18px;padding:0 10px;line-height:1.5">Cada obra tem suas sessões e o histórico fica separado. O agente só enxerga os dados desta obra.</div></div>
+    <div class="chat">
+      <div class="msgs">${val('Sessões separadas por assunto ("atraso do vergalhão", "portão"): é assim que eles pensam, ou preferem um chat único por obra?')}${msgs}</div>
+      <div class="composer"><div><span class="attach">${icon('building',13)}Contexto: ${o.nome}</span></div><textarea placeholder="Pergunte sobre esta obra…"></textarea>
+      <div class="row"><button class="btn sm">${icon('clip',14)}Anexar</button><span class="sp"></span><button class="btn amb" onclick="toast('(protótipo) enviar')">Enviar ${icon('arrowUp',15)}</button></div></div>
+    </div></div>`;
+}
+
+function tabOverview(o){
+  if(o.status==='plan') return `<div class="card row">O orçamento ainda está sendo montado no chat. <a class="link" href="#" onclick="go('obra','galpao','chat');return false">Abrir chat ${icon('arrowRight',14)}</a></div>`;
+  const diff = o.previsto - o.budget;
+  return `${val('O "budget é realista?" no topo responde a pergunta certa? Que margem de risco um gerente considera aceitável (5%? 10%)?')}
+  <div class="grid g4">
+    <div class="card kpi"><div class="l">Budget definido</div><div class="v">${brl(o.budget)}</div><div class="s mut">no cadastro da obra</div></div>
+    <div class="card kpi"><div class="l">Custo previsto pelo agente</div><div class="v">${brl(o.previsto)}</div><div class="s" style="color:var(--red)">${icon('trendUp',14)} ${brl(diff)} (+${(diff/o.budget*100).toFixed(1)}%)</div></div>
+    <div class="card kpi"><div class="l">Já gasto (pago)</div><div class="v">${brl(o.gasto)}</div><div class="s mut">${Math.round(o.gasto/o.budget*100)}% do budget · obra em ${o.progresso}%</div></div>
+    <div class="card kpi"><div class="l">Comprometido (pedidos)</div><div class="v">${brl(o.comprometido)}</div><div class="s mut">inclui ${brl(o.comprometido-o.gasto)} a pagar</div></div>
+  </div>
+  <div class="grid" style="grid-template-columns:1.4fr 1fr;margin-top:18px">
+    <div class="card"><h3>Orçamento por etapa <small>· previsto × projeção atual</small></h3>
+      <table><tr><th>Etapa</th><th class="num">Orçado em 03/03</th><th class="num">Projeção hoje</th><th class="num">Δ</th></tr>
+      ${ORC.map(c=>{ const p=c.prev, r=c.real, d=r-p;
+        return `<tr><td>${c.cat}</td><td class="num">${brl(p)}</td><td class="num">${brl(r)}</td><td class="num" style="color:${d>0?'var(--red)':d<0?'var(--green)':'var(--faint)'}">${d===0?'—':(d>0?'+':'')+brl(d).replace('R$ ','')}</td></tr>`}).join('')}
+      <tr><td><b>Total</b></td><td class="num"><b>${brl(ORC.reduce((a,c)=>a+c.prev,0))}</b></td><td class="num"><b>${brl(ORC.reduce((a,c)=>a+c.real,0))}</b></td><td></td></tr>
+      </table></div>
+    <div class="card agentnote"><h3>${icon('spark',17)}O budget é realista?</h3>
+      <p style="margin:0 0 14px"><b>Quase.</b> Com os preços de hoje em Campinas, a obra fecha em <b>${brl(o.previsto)}</b>, <b>4,6% acima</b> do budget. O aço (+R$ 6,9 mil) e a alvenaria (+R$ 3,8 mil) puxam a alta.</p>
+      <b class="sm">Economias encontradas</b>
+      <table class="sm" style="margin-top:6px">
+        <tr><td>Bloco: Cerâmica Itu no lugar do São Bento</td><td class="num" style="color:var(--green)">−R$ 2.565</td></tr>
+        <tr><td>Cimento em pedido único de 220 sc</td><td class="num" style="color:var(--green)">−R$ 1.100</td></tr>
+        <tr><td>Telha direto de Tatuí (comprar antes)</td><td class="num" style="color:var(--green)">−R$ 2.457</td></tr>
+        <tr><td>Areia do porto, não do depósito</td><td class="num" style="color:var(--green)">−R$ 952</td></tr>
+        <tr><td>Fio: Elétrica Central no lugar da Leroy</td><td class="num" style="color:var(--green)">−R$ 550</td></tr>
+        <tr><td><b>Total</b></td><td class="num"><b style="color:var(--green)">−R$ 7.624</b></td></tr>
+      </table>
+      <p class="sm mut" style="margin:12px 0 0">Mesmo aplicando tudo, ainda faltam ~R$ 20,7 mil. Sugestão: rever o acabamento (porcelanato 90×90 → 60×60 economiza ~R$ 14 mil).</p>
+      <button class="btn amb" style="margin-top:14px" onclick="toast('5 economias aplicadas ao orçamento')">Aplicar economias</button></div>
+  </div>
+  <div class="grid g2" style="margin-top:18px">
+    <div class="card"><h3>Gasto × avanço físico</h3>
+      <div class="sm mut">Dinheiro gasto ${Math.round(o.gasto/o.budget*100)}% · obra concluída ${o.progresso}%</div>
+      <div class="split" style="margin:10px 0"><div style="width:${o.progresso}%;background:var(--green)"></div><div style="width:${Math.round(o.gasto/o.budget*100)-o.progresso}%;background:var(--red)"></div></div>
+      <div class="legend"><span><i style="background:var(--green)"></i>alinhado ao avanço</span><span><i style="background:var(--red)"></i>gasto à frente do avanço (1 p.p.)</span></div></div>
+    <div class="card"><h3>Fases</h3>${FASES.slice(0,5).map(f=>`<div class="row sm" style="margin:8px 0"><span style="width:170px">${f.n}</span><div class="bar sp"><i style="width:${f.pct}%;background:${f.pct===100?'var(--green)':'var(--accentHi)'}"></i></div><span class="mut" style="width:36px;text-align:right">${f.pct}%</span></div>`).join('')}</div>
+  </div>`;
+}
+
+function best(c){ return c.forn.reduce((a,b)=>a.p<b.p?a:b); }
+function tabComp(o){
+  return `${val('O nível de detalhe do levantamento (quantidades vindas do projeto) bate com o que eles fazem hoje na planilha? Eles confiariam na quantidade estimada pelo agente, ou querem revisar item a item?')}
+  <div class="row" style="margin-bottom:16px"><span class="sectit">Lista de materiais gerada do projeto</span><span class="pill info">8 de 64 itens</span><span class="mut sm">preços cotados hoje · região de Campinas</span><span class="sp"></span>
+    <button class="btn" onclick="toast('(protótipo) exportar CSV')">${icon('download',15)}Exportar</button><button class="btn amb" onclick="openCheckout(['cim','bloco','paraf'])">${icon('cart',15)}Comprar selecionados (3)</button></div>
+  <div class="card" style="padding:0"><table>
+    <tr><th style="width:30px"></th><th>Componente</th><th>Fase</th><th class="num">Qtd. estimada</th><th>Melhor oferta</th><th class="num">Preço un.</th><th class="num">Total</th><th class="num">Economia vs. 2º</th></tr>
+    ${COMP.map((c,i)=>{const b=best(c); const s=[...c.forn].sort((x,y)=>x.p-y.p)[1]; const eco=(s.p-b.p)*c.qtd;
+      return `<tr class="click" onclick="openComp('${c.id}')"><td><input type="checkbox" style="accent-color:var(--accent)" ${['cim','bloco','paraf'].includes(c.id)?'checked':''} onclick="event.stopPropagation()"></td>
+      <td><b>${c.nome}</b></td><td class="mut sm">${c.fase}</td><td class="num">${c.qtd.toLocaleString('pt-BR')} ${c.un}</td>
+      <td>${b.n} <span class="mut sm">· ${b.prazo}</span></td><td class="num">${brl2(b.p)}</td><td class="num"><b>${brl(b.p*c.qtd)}</b></td><td class="num" style="color:var(--green)">${brl(eco)}</td></tr>`}).join('')}
+  </table></div>
+  <p class="sm mut" style="margin-top:12px">Clique num componente para ver o comparativo de fornecedores e onde comprar.</p>`;
+}
+
+function tabKanban(o){
+  return `${val('Essas 6 colunas são as etapas reais de um pedido? Falta "Pago"? A conferência no recebimento (quantidade e qualidade) é feita por quem?')}
+  <div class="row" style="margin-bottom:16px"><span class="sectit">Lotes de componentes pedidos</span><span class="mut sm">arraste o cartão entre as colunas · "Disponível no inventário" alimenta a aba Inventário</span><span class="sp"></span>
+    <span class="sm mut">Comprometido: <b style="color:var(--ink)">${brl(o.comprometido)}</b> de ${brl(o.budget)}</span></div>
+  <div class="kb">${KCOLS.map((c,i)=>{const ls=LOTES.filter(l=>l.col===i);
+    return `<div class="col" ondragover="event.preventDefault()" ondrop="dropLote(event,${i})"><h4>${i===5?`<span style="color:var(--green)">${icon('checkCircle',15)}</span>`:''}${c}<small>${ls.length} · ${brl(ls.reduce((a,l)=>a+l.v,0))}</small></h4>
+      ${ls.map(l=>`<div class="kc ${l.late?'late':''} ${i===5?'done':''}" draggable="true" ondragstart="event.dataTransfer.setData('t','${l.id}')">
+        <div class="row sm mut" style="gap:6px"><span>${l.id}</span><span class="sp"></span>${l.trf?`<span class="pill info">${icon('swap',12)}transferência</span>`:''}${l.ai?`<span class="pill warn">${icon('spark',12)}sugerido</span>`:''}${l.late?'<span class="pill bad">atrasado</span>':''}</div>
+        <b>${l.item}</b><div class="sm mut">${l.q} · ${l.forn}</div>
+        <div class="meta"><span>${l.eta}</span><b style="color:var(--ink);margin:0">${brl(l.v)}</b></div></div>`).join('')}</div>`}).join('')}</div>`;
+}
+function dropLote(e,col){ const id=e.dataTransfer.getData('t'); const l=LOTES.find(x=>x.id===id); if(!l)return; l.col=col;
+  if(col===5){ l.eta='no inventário hoje'; toast(`${l.item}: ${l.q} entraram no inventário`);} render(); }
+
+function tabInv(o){
+  return `${val('Quem dá baixa no material no dia a dia (almoxarife, mestre, pelo celular)? Registrar "para onde foi" (porta principal, portão) é viável no canteiro ou vira burocracia?')}
+  <div class="grid g4" style="margin-bottom:24px">
+    <div class="card kpi"><div class="l">Itens no inventário</div><div class="v">42</div></div>
+    <div class="card kpi"><div class="l">Valor em estoque</div><div class="v">R$ 18.240</div></div>
+    <div class="card kpi"><div class="l">Acabam em ≤ 7 dias</div><div class="v" style="color:var(--red)">2</div><div class="s mut">parafuso 5/16", vergalhão</div></div>
+    <div class="card kpi"><div class="l">Consumo acima do projeto</div><div class="v" style="color:var(--amber)">1</div><div class="s mut">parafuso no portão (+94%)</div></div>
+  </div>
+  <div class="row" style="margin-bottom:14px"><span class="sectit">Saldo por item</span><span class="sp"></span><button class="btn" onclick="openBaixa()">${icon('minus',15)}Registrar saída</button><button class="btn" onclick="toast('Entradas vêm do Kanban (coluna Disponível)')">${icon('plus',15)}Entrada avulsa</button><button class="btn" onclick="go('estoque')">${icon('swap',15)}Pedir de outra obra</button></div>
+  <div class="card" style="padding:0"><table>
+    <tr><th>Item</th><th class="num">Entrou</th><th class="num">Saiu</th><th class="num">Saldo</th><th style="width:160px">Consumido</th><th class="num">Precisa até o fim</th><th>Dura</th><th>Situação</th></tr>
+    ${INV.map(i=>{const s=i.ent-i.sai, pc=Math.round(i.sai/i.ent*100), falta=i.nec-s;
+      return `<tr class="click" onclick="openInvItem('${i.id}')"><td><b>${i.nome}</b></td><td class="num">${i.ent} ${i.un}</td><td class="num">${i.sai}</td><td class="num"><b>${s}</b></td>
+      <td><div class="bar"><i style="width:${pc}%;background:${i.st==='bad'?'var(--red)':i.st==='warn'?'var(--amber)':'var(--green)'}"></i></div><span class="sm mut">${pc}%</span></td>
+      <td class="num">${i.nec}</td><td>${i.cob}</td>
+      <td>${(()=>{const pend=TRF_HIST.find(h=>h.inv===i.id&&h.para===o.id&&h.st!=='Recebida');
+        if(pend) return `<span class="pill info">${icon('swap',12)}${pend.qn} a caminho (${pend.id})</span>${falta>pend.qn?` <span class="pill warn">+ comprar ${falta-pend.qn}</span>`:''}`;
+        const t=TRANSF.findIndex(x=>x.inv===i.id&&x.destino===o.id); const tr=TRANSF[t];
+        if(falta>0&&tr) return `<span class="pill info" style="cursor:pointer" onclick="event.stopPropagation();openTransfer(${t})">${icon('swap',12)}${tr.sug} na ${NOME_OBRA[tr.origem].replace('Reforma ','')}</span>${falta>tr.sug?` <span class="pill ${i.st==='bad'?'bad':'warn'}">+ comprar ${falta-tr.sug}</span>`:''}`;
+        const sob=TRANSF.find(x=>x.inv===i.id&&x.origem===o.id);
+        if(sob) return `<span class="pill ok">sobra ${sob.max}</span> <span class="pill gray">${NOME_OBRA[sob.destino].replace('Reforma ','')} precisa</span>`;
+        return falta>0?`<span class="pill ${i.st==='bad'?'bad':'warn'}">comprar ${falta}</span>`:'<span class="pill ok">suficiente</span>';})()}</td></tr>`}).join('')}
+  </table></div>`;
+}
+
+function tabEquipe(o){
+  return `${val('A equipe entra e sai o tempo todo. O kanban "vaga → mobilização → em campo → desmobilizado" reflete isso? Empreiteiro e diarista precisam ser tratados diferente?')}
+  <div class="grid g4" style="margin-bottom:24px">
+    <div class="card kpi"><div class="l">Em campo hoje</div><div class="v">12 pessoas</div><div class="s mut">7 cadastros, 2 deles equipes</div></div>
+    <div class="card kpi"><div class="l">Custo de mão de obra / mês</div><div class="v">R$ 41.600</div><div class="s mut">previsto R$ 39.000</div></div>
+    <div class="card kpi"><div class="l">Vagas abertas</div><div class="v" style="color:var(--red)">2</div><div class="s mut">armador · desde 01/10</div></div>
+    <div class="card kpi"><div class="l">Impacto no prazo</div><div class="v" style="color:var(--red)">+8 dias</div><div class="s mut">pela falta de armadores</div></div>
+  </div>
+  <div class="kb" style="grid-auto-columns:280px">${EQUIPE.cols.map((c,i)=>{const ps=EQUIPE.ppl.filter(p=>p.col===i);
+    return `<div class="col"><h4>${c}<small>${ps.length}</small></h4>${ps.map(p=>`<div class="kc ${p.alert?'late':''}"><div class="row"><div class="av" style="background:${p.alert?'var(--redSoft)':'var(--cream2)'};color:${p.alert?'var(--red)':'var(--ink2)'}">${p.alert?'?':p.n.split(' ').map(x=>x[0]).join('').slice(0,2)}</div><div><b style="margin:0">${p.n}</b><div class="sm mut">${p.f}</div></div></div><div class="meta"><span>${p.nota||''}</span><span>${p.c}</span></div></div>`).join('')}
+      ${i===0?`<button class="btn sm" style="width:100%;justify-content:center" onclick="toast('Agente sugere 3 armadores da sua rede')">${icon('spark',14)}Sugerir profissionais</button>`:''}</div>`}).join('')}</div>`;
+}
+
+function tabPrazos(o){
+  const W=72, hoje=34, pct=x=>x/W*100;
+  return `${val('A explicação do atraso por causa (fornecedor, equipe, clima) é o que o dono da obra cobra? Quais causas faltam (projeto, aprovação na prefeitura, pagamento)?')}
+  <div class="grid g4" style="margin-bottom:18px">
+    <div class="card kpi"><div class="l">Prazo contratado</div><div class="v">${o.prazo}</div></div>
+    <div class="card kpi"><div class="l">Previsão do agente</div><div class="v" style="color:var(--red)">${o.previsao}</div><div class="s" style="color:var(--red)">+${o.atraso} dias</div></div>
+    <div class="card kpi"><div class="l">Fase atual</div><div class="v">Estrutura</div><div class="s mut">62% · deveria estar em 100%</div></div>
+    <div class="card kpi"><div class="l">Recuperável com o plano</div><div class="v" style="color:var(--green)">−15 dias</div><div class="s mut">sobram +6 dias</div></div>
+  </div>
+  <div class="grid" style="grid-template-columns:1.3fr 1fr">
+    <div class="card"><h3>Cronograma por fase <small>· semanas desde 03/03/2026</small></h3>
+      <div class="legend" style="margin-bottom:16px"><span><i style="background:#dcd8cc"></i>planejado</span><span><i style="background:var(--accentHi)"></i>real / projetado</span><span><i style="background:var(--red);width:2px"></i>hoje (sem. 34)</span></div>
+      <div class="gantt">${FASES.map(f=>`<div>${f.n}<div class="sm mut">${f.pct}%</div></div><div class="gtrack">
+        <div class="gb" style="left:${pct(f.ini)}%;width:${pct(f.fim-f.ini)}%;background:#dcd8cc;top:3px;height:7px"></div>
+        <div class="gb" style="left:${pct(f.real[0])}%;width:${pct(f.real[1]-f.real[0])}%;background:${f.pct===100?'var(--green)':'var(--accentHi)'};top:13px;height:7px;opacity:${f.pct===0?.45:1}"></div>
+        <div class="today" style="left:${pct(hoje)}%"></div></div>`).join('')}</div></div>
+    <div><div class="card" style="margin-bottom:18px"><h3>Por que vai atrasar</h3>
+      ${[['Fornecedor','Vergalhão PED-0158 (Gerdau) com 9 dias de atraso',9,'var(--red)'],['Equipe','2 vagas de armador abertas desde 01/10',8,'var(--accentHi)'],['Clima','Chuva: 6 dias parados em outubro',4,'var(--blue)']].map(c=>`<div style="margin:12px 0"><div class="row sm"><b>${c[0]}</b><span class="sp"></span><b>+${c[2]} dias</b></div><div class="sm mut">${c[1]}</div><div class="bar" style="margin-top:6px"><i style="width:${c[2]/21*100}%;background:${c[3]}"></i></div></div>`).join('')}</div>
+    <div class="card"><h3>O estoque aguenta até o fim?</h3>
+      <table class="sm"><tr><th>Item</th><th class="num">Tem</th><th class="num">Precisa</th><th>Comprar até</th></tr>
+      <tr><td>Vergalhão 10 mm</td><td class="num">12</td><td class="num">300</td><td><span class="pill bad">hoje</span></td></tr>
+      <tr><td>Parafuso 5/16"</td><td class="num">100</td><td class="num">480</td><td><span class="pill info" style="cursor:pointer" onclick="openTransfer(0)">${icon('swap',12)}300 da Loja Centro hoje</span></td></tr>
+      <tr><td>Cimento 50 kg</td><td class="num">46</td><td class="num">220</td><td><span class="pill warn">04/11</span> <span class="pill info" style="cursor:pointer" onclick="openTransfer(1)">${icon('swap',12)}20 da Loja Centro</span></td></tr>
+      <tr><td>Telha portuguesa</td><td class="num">0</td><td class="num">3.900</td><td><span class="pill warn">12/11 (frete de 10 dias)</span></td></tr>
+      <tr><td>Brita 1</td><td class="num">11</td><td class="num">10</td><td><span class="pill ok">sem pressa</span></td></tr></table>
+      <button class="btn amb" style="margin-top:14px;width:100%;justify-content:center" onclick="go('obra','vila-nova','kanban')">Gerar pedidos sugeridos no Kanban</button></div></div>
+  </div>`;
+}
+
+/* ===================== DRAWERS / MODAIS ===================== */
+function closeDrawer(){ $('drawer').classList.remove('on'); }
+function closeModal(){ $('modal').classList.remove('on'); }
+function openComp(id){
+  const c=COMP.find(x=>x.id===id); const fs=[...c.forn].sort((a,b)=>a.p-b.p);
+  $('drawerPane').innerHTML = `<div class="row"><span class="mut sm">Componente</span><span class="sp"></span><button class="iconbtn" onclick="closeDrawer()" aria-label="Fechar">${icon('x',18)}</button></div>
+    <h2 style="margin:6px 0 4px">${c.nome}</h2><div class="mut">${c.fase} · estimado <b style="color:var(--ink)">${c.qtd.toLocaleString('pt-BR')} ${c.un}</b></div>
+    <div class="card agentnote inline" style="margin:18px 0;font-size:13px;padding:14px 16px">${icon('spark',15)}<div><b>Como estimei:</b> quantidade tirada do memorial descritivo (p. 12) e da planta de formas, com 8% de perda, que é a média do mercado para este item. <a href="#" style="text-decoration:underline" onclick="toast('Abre o trecho do projeto');return false">ver no projeto</a></div></div>
+    <h3 style="font:500 18px var(--serif);margin:22px 0 12px">Onde comprar · ${fs.length} fornecedores na região</h3>
+    ${fs.map((f,i)=>`<div class="card" style="margin-bottom:10px;padding:16px 18px;${i===0?'border-color:#bcd0bf':''}"><div class="row"><b>${f.n}</b>${i===0?'<span class="pill ok">melhor preço</span>':''}<span class="sp"></span><b>${brl2(f.p)}</b><span class="mut sm">/${c.un}</span></div>
+      <div class="row sm mut" style="margin-top:6px;gap:16px"><span class="row" style="gap:5px">${icon('pin',13)}${f.cid}</span><span class="row" style="gap:5px">${icon('truck',13)}${f.prazo}</span><span class="row" style="gap:5px">${icon('star',13)}${f.nota}</span><span class="sp"></span><span>Total: <b style="color:var(--ink)">${brl(f.p*c.qtd)}</b></span></div>
+      <div class="row" style="margin-top:12px;gap:8px"><button class="btn sm" onclick="openCheckout(['${c.id}'])">Comprar aqui</button><button class="btn sm" onclick="toast('Abre o site/WhatsApp do fornecedor')">Contato</button></div></div>`).join('')}
+    <p class="sm mut">Preços coletados hoje às 07:40 em sites, catálogos e cotações por WhatsApp. Validade de 48 h.</p>`;
+  $('drawer').classList.add('on');
+}
+function openInvItem(id){
+  const i=INV.find(x=>x.id===id)||INV[0]; const s=i.ent-i.sai;
+  const movs = id==='paraf'?MOV_PARAF:[{d:'12/09',t:'Entrada',q:+i.ent,onde:'Recebimento do pedido',quem:'Marcos (almox.)'},{d:'—',t:'Saída',q:-i.sai,onde:'Várias frentes',quem:'—'}];
+  const saidas = movs.filter(m=>m.q<0);
+  const cores=['#c6613f','#5b7a99','#8a7ca8','#5b8364'];
+  closeModal();
+  $('drawerPane').innerHTML = `<div class="row"><span class="mut sm">Inventário · Casa Vila Nova</span><span class="sp"></span><button class="iconbtn" onclick="closeDrawer()" aria-label="Fechar">${icon('x',18)}</button></div>
+    <h2 style="margin:6px 0 4px">${i.nome}</h2><div class="mut">Entraram ${i.ent} · saíram ${i.sai} · <b style="color:var(--ink)">saldo ${s} ${i.un}</b></div>
+    <h3 style="font:500 18px var(--serif);margin:26px 0 12px">Para onde foi o lote</h3>
+    <div class="split" style="height:20px;margin-bottom:12px;border-radius:6px">${saidas.map((m,k)=>`<div style="width:${-m.q/i.ent*100}%;background:${cores[k%4]}" title="${m.onde}"></div>`).join('')}<div style="width:${s/i.ent*100}%;background:#dcd8cc"></div></div>
+    <div class="sm">${saidas.map((m,k)=>`<div class="row" style="margin:6px 0"><i style="width:9px;height:9px;border-radius:3px;background:${cores[k%4]}"></i>${m.onde}<span class="sp"></span><b>${-m.q}</b><span class="mut" style="width:42px;text-align:right">${Math.round(-m.q/i.ent*100)}%</span></div>`).join('')}
+      <div class="row" style="margin:6px 0"><i style="width:9px;height:9px;border-radius:3px;background:#dcd8cc"></i>Em estoque<span class="sp"></span><b>${s}</b><span class="mut" style="width:42px;text-align:right">${Math.round(s/i.ent*100)}%</span></div></div>
+    ${id==='paraf'?`<div class="card alertnote inline" style="margin:18px 0;font-size:13px;padding:14px 16px">${icon('alert',15)}<div><b>Consumo fora do previsto:</b> o portão da garagem usou 350, contra 180 no projeto (+94%).</div></div>`:''}
+    <h3 style="font:500 18px var(--serif);margin:22px 0 12px">Movimentações</h3>
+    <div class="card" style="padding:0"><table class="sm"><tr><th>Data</th><th>Tipo</th><th class="num">Qtd</th><th>Destino / origem</th><th>Quem</th></tr>
+      ${movs.map(m=>`<tr><td>${m.d}</td><td><span class="pill ${m.q>0?'ok':'gray'}">${m.t}</span></td><td class="num">${m.q>0?'+':''}${m.q}</td><td>${m.onde}</td><td class="mut">${m.quem}</td></tr>`).join('')}</table></div>
+    <div class="row" style="margin-top:16px"><button class="btn" onclick="openBaixa()">${icon('minus',15)}Registrar saída</button><button class="btn amb" onclick="toast('Pedido sugerido no Kanban')">Repor estoque</button></div>`;
+  $('drawer').classList.add('on');
+}
+function openBaixa(){
+  closeDrawer();
+  $('modalBox').innerHTML = `<h2 style="margin:0 0 6px">Registrar saída de material</h2><div class="mut sm">Feito pelo celular no canteiro, ou é só falar no chat: "usei 40 parafusos na porta dos fundos".</div>
+    <label class="l">Item</label><select class="f"><option>Parafuso 5/16" × 2" (saldo 100)</option><option>Cimento CP-II 50 kg (saldo 46)</option></select>
+    <div class="grid g2" style="gap:0 14px"><div><label class="l">Quantidade</label><input class="f" value="40"></div><div><label class="l">Data</label><input class="f" value="28/10/2026"></div></div>
+    <label class="l">Para onde foi (frente de serviço)</label><select class="f"><option>Porta dos fundos</option><option>Porta principal</option><option>Portão da garagem</option><option>Estrutura do telhado</option><option>+ nova frente…</option></select>
+    <label class="l">Retirado por</label><select class="f"><option>Equipe carpintaria</option><option>Serralheria (Luiz)</option></select>
+    <label class="l">Foto (opcional)</label><div class="drop" style="padding:16px">${icon('camera',20)}tirar foto</div>
+    <div class="row" style="margin-top:22px"><span class="sp"></span><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn amb" onclick="closeModal();toast('Saída registrada · saldo 60')">Registrar</button></div>`;
+  $('modal').classList.add('on');
+}
+function openCheckout(ids){
+  closeDrawer();
+  const its = ids.map(id=>{const c=COMP.find(x=>x.id===id); const b=id==='aco'?c.forn[1]:best(c); const q=id==='aco'?120:id==='paraf'?500:id==='bloco'?9500:220; return {c,b,q};});
+  const tot = its.reduce((a,x)=>a+x.b.p*x.q,0);
+  $('modalBox').innerHTML = `<h2 style="margin:0 0 6px">${icon('cart',20)}Comprar pelo Canteiro</h2><div class="mut sm">Casa Vila Nova · os pedidos entram no Kanban na coluna "Pedido feito"</div>
+    <table style="margin:18px 0"><tr><th>Item</th><th>Fornecedor</th><th class="num">Qtd</th><th class="num">Total</th></tr>
+    ${its.map(x=>`<tr><td>${x.c.nome}</td><td>${x.b.n}<div class="sm mut row" style="gap:5px">${icon('truck',13)}${x.b.prazo}</div></td><td class="num"><input class="f" style="width:80px;text-align:right" value="${x.q}"></td><td class="num">${brl(x.b.p*x.q)}</td></tr>`).join('')}
+    <tr><td colspan="3"><b>Total</b></td><td class="num"><b>${brl(tot)}</b></td></tr></table>
+    <div class="grid g2 sm" style="gap:12px"><div class="card" style="background:var(--bg);padding:14px 16px"><div class="mut">Budget após a compra</div><b>${brl(286400+tot)} comprometidos de ${brl(620000)}</b></div>
+    <div class="card" style="background:var(--bg);padding:14px 16px"><div class="mut">Entrega</div><b>Canteiro · R. das Palmeiras, 220</b><div class="mut">recebe: Marcos (almox.)</div></div></div>
+    <label class="l">Pagamento</label><select class="f"><option>Boleto 28 dias (faturado para Construtora RZ)</option><option>Pix</option><option>Cartão corporativo</option></select>
+    <div class="callout val" style="margin:16px 0 0">${icon('flask')}<div><b>Validar:</b> eles comprariam dentro da plataforma, ou só querem a cotação e fecham por telefone/WhatsApp com o fornecedor? Precisa de aprovação de outra pessoa acima de um valor?</div></div>
+    <div class="row" style="margin-top:22px"><span class="sp"></span><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn amb" onclick="confirmCheckout()">Confirmar pedido</button></div>`;
+  $('modal').classList.add('on');
+}
+function confirmCheckout(){ closeModal(); toast('Pedidos criados → Kanban · Pedido feito'); setTimeout(()=>go('obra','vila-nova','kanban'),700); }
+
+/* Wizard: nova obra */
+let wz={};
+function openWizard(step){
+  const S=[1,2,3,4].map(n=>`<div class="${n<=step?'on':''}"></div>`).join('');
+  let b='';
+  if(step===1) b=`<h2 style="margin:0">Nova obra · 1. Projeto</h2><p class="mut sm">Anexe o que tiver: projeto arquitetônico, estrutural, memorial descritivo, fotos do terreno.</p>
+    <div class="drop">${icon('upload',22)}Arraste PDF, DWG, imagens<br><span class="sm">ou <u>escolha arquivos</u></span></div>
+    <div style="margin-top:12px"><span class="attach">${icon('file',13)}projeto-arquitetonico.pdf · 22 pág.</span><span class="attach">${icon('file',13)}memorial-descritivo.pdf</span><span class="attach">${icon('ruler',13)}estrutural.dwg</span></div>
+    <label class="l">Nome da obra</label><input class="f" value="Sobrado Jardim Europa">
+    <label class="l">Endereço (usado para cotar preços na região)</label><input class="f" value="Rua Holanda, 88 · Jardim Europa · Campinas-SP">`;
+  if(step===2) b=`<h2 style="margin:0">2. Descreva a obra</h2><p class="mut sm">Escreva do seu jeito. O agente pergunta o que faltar.</p>
+    <textarea class="f" rows="7">Sobrado de 210 m², 3 suítes, laje nos dois pavimentos, telhado aparente com telha cerâmica. Padrão médio-alto: porcelanato 90x90 na área social, esquadrias de alumínio preto. Fundação em estaca (o terreno tem declive de 1,5 m). Quero piscina de 3x6 no fundo. Já tenho a equipe de pedreiros (empreitada), falta elétrica e hidráulica.</textarea>`;
+  if(step===3) b=`<h2 style="margin:0">3. Budget, prazos e fases</h2>
+    <div class="grid g2" style="gap:0 14px"><div><label class="l">Budget total</label><input class="f" value="R$ 780.000"></div><div><label class="l">Margem de segurança</label><select class="f"><option>5%</option><option selected>8%</option><option>10%</option></select></div>
+    <div><label class="l">Início</label><input class="f" value="12/01/2027"></div><div><label class="l">Entrega desejada</label><input class="f" value="30/11/2027"></div></div>
+    <label class="l">Fases (o agente sugere a partir do projeto; edite à vontade)</label>
+    ${['Preliminares e terraplenagem','Fundação (estacas)','Estrutura','Alvenaria','Cobertura','Instalações','Piscina','Acabamento','Entrega'].map(f=>`<span class="attach">${icon('grip',13)}${f}</span>`).join('')}<span class="attach" style="background:none;border:1px dashed #d9d5c9">${icon('plus',13)}fase</span>`;
+  if(step===4) b=`<h2 style="margin:0">4. O agente está montando o orçamento</h2>
+    <div style="margin:20px 0">${[['Lendo 3 arquivos do projeto','ok'],['Levantando quantitativos (71 itens)','ok'],['Cotando preços em Campinas (214 ofertas, 19 fornecedores)','ok'],['Montando cronograma por fase','ok'],['Comparando com o budget','run']].map(s=>`<div class="row" style="margin:10px 0;color:${s[1]==='ok'?'var(--ink2)':'var(--ink)'}"><span style="color:${s[1]==='ok'?'var(--green)':'var(--accent)'};display:flex">${s[1]==='ok'?icon('checkCircle',17):icon('loader',17,'spin')}</span>${s[0]}</div>`).join('')}</div>
+    <div class="card agentnote inline" style="padding:14px 16px;margin-bottom:16px">${icon('spark',15)}<div><b>Prévia:</b> custo estimado <b>R$ 812–846 mil</b>, <b>4–8% acima</b> do budget. A piscina (R$ 58 mil) e a fundação em estaca (R$ 41 mil) pesam mais. Achei <b>R$ 23 mil</b> de economia em fornecedores. O prazo de 10,5 meses é <b>realista</b> se a cobertura começar até a semana 24.</div></div>
+    ${val('O gerente confiaria numa estimativa gerada em minutos? O que ele precisaria ver para acreditar (memória de cálculo, fonte dos preços, comparação com uma obra anterior)?')}`;
+  $('modalBox').innerHTML = `<div class="steps">${S}</div>${b}
+    <div class="row" style="margin-top:22px">${step>1?`<button class="btn" onclick="openWizard(${step-1})">${icon('arrowLeft',15)}Voltar</button>`:''}<span class="sp"></span>
+    ${step<4?`<button class="btn amb" onclick="openWizard(${step+1})">${step===3?'Gerar orçamento com o agente':'Continuar'} ${icon('arrowRight',15)}</button>`:`<button class="btn amb" onclick="closeModal();go('obra','vila-nova','overview');toast('(protótipo) abre a Visão geral da obra criada')">Abrir orçamento completo ${icon('arrowRight',15)}</button>`}</div>`;
+  $('modal').classList.add('on');
+}
+
+/* Estoque entre obras */
+function renderEstoque(){
+  const eco = TRANSF.reduce((a,t)=>a+t.sug*(t.novo-t.custo),0);
+  const perda = TRANSF.filter(t=>t.perda).reduce((a,t)=>a+t.sug*t.custo,0);
+  const saldoObra = id => TRF_HIST.reduce((a,h)=>a+(h.de===id?h.v:0)-(h.para===id?h.v:0),0);
+  return `<div class="top"><h1>Estoque entre obras</h1><span class="crumb">o que sobra numa obra e falta em outra · sempre a preço de custo</span></div>
+  <div class="page">
+    ${val('Ele já faz isso hoje, "no braço", entre obras? Quem autoriza a saída da obra de origem: o mestre dela, o gerente ou o dono? O preço de custo é justo, ou precisa somar frete e manuseio? E quando as obras são de clientes diferentes (o material é do cliente), ainda pode?')}
+    <div class="grid g4" style="margin-bottom:18px">
+      <div class="card kpi"><div class="l">Sugestões do agente</div><div class="v">${TRANSF.length}</div><div class="s mut">entre 2 obras</div></div>
+      <div class="card kpi"><div class="l">Economia vs. comprar novo</div><div class="v" style="color:var(--green)">${brl2(eco)}</div><div class="s mut">diferença de preço, sem contar o frete</div></div>
+      <div class="card kpi"><div class="l">Material que deixaria de estragar</div><div class="v" style="color:var(--green)">${brl2(perda)}</div><div class="s mut">cimento vencendo na Loja Centro</div></div>
+      <div class="card kpi"><div class="l">Dias de obra ganhos</div><div class="v" style="color:var(--green)">até 3</div><div class="s mut">chega hoje, não em 3 dias</div></div>
+    </div>
+    <div class="card" style="margin-bottom:18px"><h3>${icon('spark',17)}Transferências sugeridas</h3>
+      <div class="sm mut" style="margin:-6px 0 12px">Regra: a obra de origem fica com o que ainda vai usar <b>+ uma reserva de metade disso</b>. Só o que passar disso pode sair.</div>
+      <table><tr><th>Item</th><th>De → para</th><th class="num">Saldo na origem</th><th class="num">Origem ainda usa</th><th class="num">Reserva</th><th class="num">Pode sair</th><th class="num">Destino precisa</th><th class="num">Preço de custo</th><th class="num">Total</th><th></th></tr>
+      ${TRANSF.map((t,k)=>`<tr><td><b>${t.item}</b>${t.perda?`<div class="sm row" style="gap:5px;color:var(--amber)">${icon('hourglass',13)}vence em 25 dias na origem</div>`:''}</td>
+        <td class="sm">${NOME_OBRA[t.origem]}<br><span class="mut">→</span> <b>${NOME_OBRA[t.destino]}</b></td>
+        <td class="num">${t.saldo}</td><td class="num">${t.usar}</td><td class="num">${t.reserva}</td><td class="num"><b>${t.max}</b></td><td class="num">${t.falta}</td>
+        <td class="num">${brl2(t.custo)}<div class="sm mut">novo: ${brl2(t.novo)}</div></td><td class="num"><b>${brl2(t.sug*t.custo)}</b><div class="sm mut">${t.sug} ${t.un}</div></td>
+        <td><button class="btn amb sm" onclick="openTransfer(${k})">Transferir</button></td></tr>`).join('')}</table></div>
+    <div class="grid" style="grid-template-columns:1.6fr 1fr">
+      <div class="card"><h3>Histórico</h3><table class="sm"><tr><th>Nº</th><th>Data</th><th>Item</th><th>De → para</th><th class="num">Valor (custo)</th><th>Situação</th></tr>
+        ${TRF_HIST.map(h=>`<tr><td class="mut">${h.id}</td><td>${h.d}</td><td>${h.item} · ${h.q}</td><td>${NOME_OBRA[h.de]} → ${NOME_OBRA[h.para]}</td><td class="num">${brl2(h.v)}</td><td><span class="pill ${h.st==='Recebida'?'ok':'warn'}">${h.st}</span></td></tr>`).join('')}</table></div>
+      <div class="card"><h3>Acerto entre as obras <small>· o budget de cada uma</small></h3>
+        <div class="sm mut" style="margin-bottom:10px">Quem cede recebe o valor de volta no orçamento; quem recebe lança como gasto de material.</div>
+        ${['vila-nova','loja-centro'].map(id=>{const v=saldoObra(id); return `<div class="row" style="margin:10px 0;padding-bottom:10px;border-bottom:1px solid var(--line2)"><span>${NOME_OBRA[id]}</span><span class="sp"></span><b style="font:500 18px var(--serif);color:${v>=0?'var(--green)':'var(--red)'}">${v>=0?'+':'−'}${brl2(Math.abs(v))}</b></div>`}).join('')}
+        <div class="sm mut">Positivo: cedeu mais do que recebeu.</div></div>
+    </div>
+  </div>`;
+}
+function openTransfer(k){
+  closeDrawer();
+  const t=TRANSF[k];
+  const w=x=>x/t.saldo*100;
+  $('modalBox').innerHTML = `<h2 style="margin:0 0 6px">${icon('swap',20)}Transferir entre obras</h2>
+    <div class="mut sm">${NOME_OBRA[t.origem]} → <b style="color:var(--ink)">${NOME_OBRA[t.destino]}</b> · ${t.item}</div>
+    <div class="card agentnote inline" style="margin:18px 0;font-size:13px;padding:14px 16px">${icon('spark',15)}<div>${t.pq}</div></div>
+    <b class="sm">Quanto pode sair sem prejudicar a ${NOME_OBRA[t.origem]}</b>
+    <div class="split" style="height:20px;margin:10px 0;border-radius:6px"><div style="width:${w(t.usar)}%;background:#a8a497" title="ainda vai usar"></div><div style="width:${w(t.reserva)}%;background:#d6d2c5" title="reserva"></div><div style="width:${w(t.max)}%;background:var(--green)" title="pode sair"></div></div>
+    <div class="legend"><span><i style="background:#a8a497"></i>ainda vai usar: ${t.usar}</span><span><i style="background:#d6d2c5"></i>reserva: ${t.reserva}</span><span><i style="background:var(--green)"></i>pode sair: <b>${t.max}</b> de ${t.saldo} ${t.un}</span></div>
+    <div class="grid g2" style="margin-top:6px;gap:0 14px">
+      <div><label class="l">Quantidade (máx. ${t.max})</label><input class="f" id="tq" type="number" min="1" max="${t.max}" value="${t.sug}" oninput="trfCalc(${k})"></div>
+      <div><label class="l">Transporte</label><select class="f"><option>Caminhão da construtora (hoje, 15h)</option><option>Equipe da obra destino retira</option><option>Frete terceirizado</option></select></div>
+    </div>
+    <div id="tcalc"></div>
+    <div class="sm mut" style="margin-top:12px">Preço de custo do lote original: <b>${t.lote}</b>. Precisa do OK de <b>${t.resp}</b>; o pedido fica pendente até lá.</div>
+    <div class="callout val" style="margin:16px 0 0">${icon('flask')}<div><b>Validar:</b> a reserva de "metade do que ainda vai usar" é conservadora o bastante? Ele quer ajustar por item (cimento ≠ parafuso)?</div></div>
+    <div class="row" style="margin-top:22px"><span class="sp"></span><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn amb" onclick="confirmTransfer(${k})">Pedir transferência</button></div>`;
+  $('modal').classList.add('on'); trfCalc(k);
+}
+function trfCalc(k){
+  const t=TRANSF[k], q=Math.min(t.max,Math.max(0,+$('tq').value||0)), resto=Math.max(0,t.falta-q);
+  $('tcalc').innerHTML = `<table class="sm" style="margin-top:16px">
+    <tr><th></th><th class="num">Transferir</th><th class="num">Comprar novo</th></tr>
+    <tr><td>Preço por ${t.un}</td><td class="num">${brl2(t.custo)}</td><td class="num">${brl2(t.novo)} <span class="mut">(${t.novoForn})</span></td></tr>
+    <tr><td>Total de ${q} ${t.un}</td><td class="num"><b>${brl2(q*t.custo)}</b></td><td class="num">${brl2(q*t.novo)}</td></tr>
+    <tr><td>Chega em</td><td class="num"><b>hoje</b></td><td class="num">${t.novoPrazo}</td></tr>
+    <tr><td>No orçamento</td><td class="num" colspan="2"><span style="color:var(--red)">${NOME_OBRA[t.destino]} −${brl2(q*t.custo)}</span> · <span style="color:var(--green)">${NOME_OBRA[t.origem]} +${brl2(q*t.custo)}</span></td></tr>
+    </table>${resto>0?`<div class="sm" style="margin-top:8px">Ainda faltam <b>${resto} ${t.un}</b> na ${NOME_OBRA[t.destino]}: o agente inclui no próximo pedido de compra.</div>`:''}`;
+}
+function confirmTransfer(k){
+  const t=TRANSF[k], q=Math.min(t.max,+$('tq').value||t.sug), id='TRF-000'+(TRF_HIST.length+2);
+  TRF_HIST.unshift({id, d:'28/10', inv:t.inv, qn:q, item:t.item, q:q+' '+t.un, de:t.origem, para:t.destino, v:q*t.custo, st:'Aguardando OK da origem'});
+  if(t.destino==='vila-nova') LOTES.push({id, item:t.item, q:q+' '+t.un, forn:'de '+NOME_OBRA[t.origem], v:Math.round(q*t.custo), eta:'aguardando OK · chega hoje', col:2, trf:true});
+  TRANSF.splice(k,1); closeModal();
+  toast(`${id} pedida · ${t.resp.split(' (')[0]} foi avisada`);
+  setTimeout(()=>go('estoque'),600);
+}
+
+/* Mapa de fluxos */
+function renderFluxos(){
+  const F=[
+    ['1. Criar obra e orçar','Hub → + Nova obra → anexar projeto → descrever → budget, prazo e fases → agente levanta quantitativos e cota na região → Visão geral: "o budget é realista?" + economias',"openWizard(1)"],
+    ['2. Do orçamento à compra','Componentes → comparar fornecedores (drawer) → selecionar → checkout → pedidos criados no Kanban como "Pedido feito"',"go('obra','vila-nova','componentes')"],
+    ['3. Acompanhar os lotes','Kanban: Cotado → Aprovado → Pedido feito → Em trânsito → Entregue (conferir) → Disponível no inventário · atraso marcado e alimentando Prazos',"go('obra','vila-nova','kanban')"],
+    ['4. Inventário (entra, sai, para onde)','Ao chegar em "Disponível" vira entrada → baixas por frente de serviço (porta principal 10%) → saldo, cobertura em dias, consumo fora do projeto',"go('obra','vila-nova','inventario')"],
+    ['5. Gestão de equipe','Kanban de pessoas: vaga → mobilização → em campo → desmobilizado · custo/mês vs previsto · impacto da vaga no prazo',"go('obra','vila-nova','equipe')"],
+    ['6. Prazos e riscos','Gantt planejado × real → previsão do agente → atraso por causa (fornecedor/equipe/clima) → estoque aguenta até o fim? → gerar pedidos',"go('obra','vila-nova','prazos')"],
+    ['7. Estoque entre obras','Agente cruza o que sobra numa obra com o que falta em outra → máximo que pode sair = saldo − o que ainda usa − reserva → transferir a preço de custo do lote → OK do responsável da origem → entra no Kanban como transferência → acerto no budget das duas',"go('estoque')"],
+    ['8. Tudo pelo chat','Home (todas as obras) ou chat da obra (sessões separadas): perguntar, receber resposta com dados + botão de ação (aprovar pedido, abrir aba, virar plano)',"go('home')"],
+  ];
+  return `<div class="top"><h1>Mapa de fluxos do MVP</h1></div><div class="page"><div class="grid g2">${F.map(f=>`<div class="card wscard" onclick="${f[2]}"><h3>${f[0]}</h3><div class="mut" style="line-height:1.6">${f[1]}</div><div class="link" style="margin-top:12px">abrir no protótipo ${icon('arrowRight',14)}</div></div>`).join('')}</div></div>`;
+}
+
+/* ===================== RENDER ===================== */
+/* Telas de topo. Feature nova: VIEWS.chave = () => html (e, se quiser, NAV_EXTRA.push({view,icon,label,count})). */
+const VIEWS = {home:()=>renderHome(), hub:()=>renderHub(), estoque:()=>renderEstoque(), fluxos:()=>renderFluxos(), obra:()=>obra()?renderObra():renderHome()};
+const NAV_EXTRA = [];
+function addCSS(css){ const s=document.createElement('style'); s.textContent=css; document.head.appendChild(s); }
+function render(){
+  renderSide();
+  const m=$('main');
+  m.innerHTML=(VIEWS[state.view]||VIEWS.home)();
+  m.scrollTop=0;
+  document.dispatchEvent(new Event('rendered'));
+}

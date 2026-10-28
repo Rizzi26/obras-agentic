@@ -1,0 +1,17 @@
+<!doctype html><body><pre id="out">rodando</pre><script>
+const routes=['home','hub','estoque','fluxos','obra/vila-nova/chat','obra/vila-nova/overview','obra/vila-nova/componentes','obra/vila-nova/kanban','obra/vila-nova/inventario','obra/vila-nova/equipe','obra/vila-nova/prazos','obra/loja-centro/overview','obra/galpao/chat','campo','aprovacoes','obra/vila-nova/diario','obra/vila-nova/medicoes'];
+const calls=["openWizard(1)","openWizard(4)","openCheckout(['cim'])","openTransfer(0)","openComp('cim')","openInvItem('paraf')","openBaixa()"];
+const errs=[];
+async function run(){
+ for(const r of routes){ const f=document.createElement('iframe'); f.style.width='1440px'; f.style.height='900px'; document.body.appendChild(f);
+  await new Promise(ok=>{f.onload=ok; f.src='/index.html?s='+Math.random()+'#'+r;});
+  f.contentWindow.onerror=(m)=>errs.push(r+': '+m);
+  await new Promise(ok=>setTimeout(ok,120));
+  const txt=f.contentDocument.querySelector('#main').innerText.length;
+  if(txt<50) errs.push(r+': tela vazia');
+  if(r==='home') for(const c of calls){ try{ f.contentWindow.eval(c);}catch(e){errs.push(c+': '+e.message);} }
+  f.remove(); }
+ document.getElementById('out').textContent='FIM\n'+(errs.join('\n')||'sem erros');}
+window.addEventListener('error',e=>errs.push('top: '+e.message));
+run();
+</script>
