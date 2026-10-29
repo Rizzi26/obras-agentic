@@ -10,16 +10,16 @@
   /* texto (AA sobre branco e sobre o concreto) */
   --ink:#17201d; --ink2:#2f3a36; --muted:#575f5c; --faint:#666e6b;
   /* sidebar verde-grafite */
-  --side:#1c2a27; --sideHover:#253632; --sideOn:#2e423d; --sideInk:#dbe3e0; --sideMuted:#a3b3ad;
+  --side:#1c2a27; --sideHover:rgba(255,255,255,.07); --sideOn:rgba(255,255,255,.11); --sideInk:#dfe7e4; --sideMuted:#afbeb8;
   /* ocre = ação */
-  --accent:#e09a2b; --accentHi:#eaaa45; --accentSoft:#fbefd9; --accentInk:#8a5a12;
-  --pine:#1c2a27; --pineSoft:#e3ece9; --pineLine:#c4d5ce;
-  /* estados */
-  --amber:#a06a16; --amberSoft:#fbf0d6; --amberInk:#7d5410;      /* pede você */
-  --red:#b93c30;   --redSoft:#fbe9e6;   --redInk:#982f25;        /* perda já ocorrida, bloqueio */
-  --blue:#3d6b96;  --blueSoft:#e4edf6;  --blueInk:#2d5277;       /* a caminho, transferência */
-  --green:#2a7d52; --greenSoft:#e1f1e7; --greenInk:#256f49;      /* resolvido, dentro do previsto */
-  --gray:#6a7370;  --graySoft:#dde2e0;  --grayInk:#4c5551;       /* informação */
+  --accent:#e09a2b; --accentHi:#eaaa45; --accentSoft:#fcedd2; --accentInk:#8a5a12;
+  --pine:#1c2a27; --pineSoft:#e1ece8; --pineLine:#c4d5ce;
+  /* estados (fundos um tom mais vivos; o texto continua AA sobre eles) */
+  --amber:#a06a16; --amberSoft:#fcecc6; --amberInk:#7a520f;      /* pede você */
+  --red:#b93c30;   --redSoft:#fce3de;   --redInk:#962e24;        /* perda já ocorrida, bloqueio */
+  --blue:#3d6b96;  --blueSoft:#dce9f7;  --blueInk:#2b5075;       /* a caminho, transferência */
+  --green:#2a7d52; --greenSoft:#d8f0e1; --greenInk:#236c46;      /* resolvido, dentro do previsto */
+  --gray:#6a7370;  --graySoft:#dde3e1;  --grayInk:#4a5350;       /* informação */
   --violet:#6b5aa0;
   /* tipografia: 13 · 14 · 16 · 22 · 28 (nada abaixo de 12) */
   --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
@@ -27,8 +27,15 @@
   --t-meta:13px; --t-body:14px; --t-sec:16px; --t-bloco:22px; --t-h1:28px;
   /* espaço */
   --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
-  --r:10px;
-  --shadow:0 1px 2px rgba(23,32,29,.06),0 1px 6px rgba(23,32,29,.04);
+  /* forma: cartão e painel 18 · controle 12 · pílula 999 */
+  --r:18px; --rc:12px; --rp:999px;
+  /* profundidade: sombras em camadas tingidas de verde-grafite; borda translúcida com realce interno */
+  --edge:rgba(28,52,45,.10); --edgeHi:rgba(255,255,255,.7); --hl:inset 0 1px 0 rgba(255,255,255,.6);
+  --shadow:0 1px 2px rgba(20,40,34,.06),0 8px 24px -6px rgba(20,40,34,.09);
+  --shadowUp:0 1px 2px rgba(20,40,34,.07),0 12px 32px -8px rgba(20,40,34,.16),0 28px 64px -24px rgba(20,40,34,.18);
+  /* vidro */
+  --glass:rgba(255,255,255,.72); --glassStrong:rgba(255,255,255,.84); --glassDark:rgba(19,32,28,.93);
+  --blur:blur(20px) saturate(150%);
   /* movimento */
   --ease:cubic-bezier(.23,1,.32,1);
 }
@@ -519,6 +526,145 @@ tr.vs-realce{box-shadow:none} tr.vs-realce>td{background-color:var(--accentSoft)
   .ca-tag button:hover{background:rgba(138,90,18,.12)}
 }
 @keyframes sideIn{from{transform:translateX(-24px);opacity:0}to{transform:none;opacity:1}}
+
+/* =====================================================================================================
+   Vidro e profundidade
+   Fundo: concreto frio com luz ambiente (ocre quente no alto à direita, grafite e azul frios embaixo à esquerda).
+   Vidro só no que flutua: lateral, topo da sessão, campo da conversa, "Perguntar sobre isto", menus, modal,
+   drawer e toast. Conteúdo fica quase opaco (≥ 94%) para a leitura. Sem vidro: fundo opaco (fim da seção).
+   ===================================================================================================== */
+body{background:
+  radial-gradient(1100px 760px at 104% -8%,rgba(232,163,58,.20),transparent 62%),
+  radial-gradient(900px 700px at 62% 46%,rgba(255,255,255,.38),transparent 70%),
+  radial-gradient(1000px 820px at -6% 108%,rgba(61,107,150,.14),transparent 64%),
+  radial-gradient(760px 620px at 18% 22%,rgba(28,66,56,.10),transparent 70%),
+  var(--bg);background-attachment:fixed}
+
+/* casca: lateral e coluna principal flutuando a 10 px da janela (só no painel; o #campo no celular fica de ponta a ponta) */
+@media (min-width:1100px){
+.app{padding:10px;column-gap:10px;row-gap:0}
+.app>.side{border-radius:20px;background:var(--glassDark);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+  border:1px solid rgba(255,255,255,.07);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),var(--shadowUp)}
+.app>.ses-top{border-radius:20px 20px 0 0;background:none;border:1px solid var(--edgeHi);border-bottom-color:var(--edge);box-shadow:var(--hl)}
+/* o vidro do topo e do campo da conversa fica num ::before: assim o menu "+" e o autocompletar, que moram dentro
+   deles, desfocam a página de verdade (um elemento com backdrop-filter isolaria o desfoque dos filhos) */
+.app>.ses-top::before,.composer::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;
+  background:var(--glass);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur)}
+.composer::before{background:var(--glassStrong)}
+/* o véu claro da coluna é um item da grade atrás de topo e conteúdo: a área rola sem virar "cartão" */
+.app::before{content:"";grid-column:2;grid-row:1/-1;border-radius:20px;background:rgba(255,255,255,.26);box-shadow:inset 0 0 0 1px rgba(255,255,255,.55)}
+.app>.main,.app>.visao{border-radius:0 0 20px 20px}
+.app>.ses-top[hidden]+.main,.app.em-pagina>.main{border-radius:20px}
+.main.ca,.visao{background:none}
+.app.em-pagina>.main>.top{border-radius:20px 20px 0 0;background:var(--glass);border-bottom-color:var(--edge)}
+}
+.top{background:rgba(255,255,255,.7);border-bottom-color:var(--edge)}
+.tabs{background:rgba(255,255,255,.7);border-bottom-color:var(--edge)}
+
+/* lateral */
+.side{scrollbar-width:none}
+.brand .tag{border-color:rgba(255,255,255,.14)}
+.logo,.av{background:linear-gradient(150deg,#f2b860 0%,#e09a2b 55%,#cf8418 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 2px 6px -1px rgba(0,0,0,.3)}
+.logo{border-radius:9px}
+.nav,.side .grp,.newbtn{border-radius:10px}
+.nav.on{background:var(--sideOn);box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+.side-nova{border-radius:12px;border-color:rgba(255,255,255,.14);background:rgba(255,255,255,.05);box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+.nav .count,.side .grp .count,.tab .count{background:linear-gradient(180deg,#eeb052,#df962a);box-shadow:inset 0 1px 0 rgba(255,255,255,.35)}
+.side .foot{border-top-color:rgba(255,255,255,.09);border-radius:0 0 12px 12px}
+.fict{border-color:rgba(255,255,255,.09);border-radius:12px}
+
+/* topo da sessão e abas: aba ativa em vidro claro com indicador arredondado */
+.abas{padding:2px 14px 8px;gap:4px}
+.aba{padding:7px 12px;border-bottom:0;border-radius:12px;position:relative}
+.aba-c .aba{padding-right:32px}
+.aba.on{background:rgba(255,255,255,.88);box-shadow:var(--hl),0 0 0 1px var(--edge),0 2px 8px -2px rgba(20,40,34,.14)}
+.aba.on::after{content:"";position:absolute;left:50%;bottom:3px;width:18px;height:3px;margin-left:-9px;border-radius:99px;background:var(--accent)}
+.aba-c .aba.on::after{margin-left:-19px}
+.aba-x{top:6px;border-radius:8px}
+.aba-add{border-radius:12px;border-color:rgba(28,52,45,.28);background:rgba(255,255,255,.4)}
+.tab{border-radius:12px 12px 0 0}
+
+/* forma dos controles */
+.btn,input.f,select.f,textarea.f,.vs-enviar,.ca-tag,.attach{border-radius:var(--rc)}
+.btn.sm,.kc .kact .btn{border-radius:10px}
+.iconbtn,body .mm-b{border-radius:10px}
+.seg{border-radius:13px;background:rgba(28,52,45,.08);box-shadow:inset 0 1px 2px rgba(20,40,34,.06)}
+.seg a,.seg button{border-radius:10px}
+.seg .on{box-shadow:var(--hl),0 1px 2px rgba(20,40,34,.1),0 2px 6px -2px rgba(20,40,34,.12)}
+.pill,.chip,.cv-chip,.kpi .proj,.ca-menu-pop .n{border-radius:var(--rp)}
+
+/* botões: realce interno; primário em ocre → âmbar com brilho */
+.btn{background:rgba(255,255,255,.92);border-color:rgba(28,52,45,.16);box-shadow:var(--hl),0 1px 2px rgba(20,40,34,.07)}
+.btn.amb,.vs-enviar:not(:disabled){background:linear-gradient(180deg,#efb150 0%,#e09a2b 52%,#d78d1e 100%);border-color:#cf8a22;color:var(--pine);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.38),inset 0 -1px 0 rgba(138,90,18,.18),0 1px 2px rgba(138,90,18,.22),0 6px 14px -6px rgba(214,140,30,.55)}
+.btn.pri{background:linear-gradient(180deg,#2c3a35,var(--ink));border-color:var(--ink);box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 1px 2px rgba(20,40,34,.2),0 6px 14px -6px rgba(20,40,34,.4)}
+.btn[disabled].amb,.btn[aria-disabled="true"].amb{box-shadow:none}
+
+/* pílulas de estado: um anel do próprio tom dá corpo sem escurecer o texto */
+.pill{box-shadow:inset 0 0 0 1px color-mix(in srgb,currentColor 16%,transparent)}
+
+/* superfícies de conteúdo: quase opacas, borda translúcida e sombra em camadas */
+.card,.ld-lista,body .cv-cartao,body .hm-st,body .hm-vazio{background:rgba(255,255,255,.95);border-color:var(--edge);border-radius:var(--r);box-shadow:var(--hl),var(--shadow)}
+.card .card,.modal .box .card,.drawer .pane .card .card{border-radius:12px;box-shadow:none}
+.card .ld-lista,body .cv-cartao .ld-lista,.ca-cartao .ld-lista{background:none;box-shadow:none}
+.kc{border-radius:14px;border-color:var(--edge);background:rgba(255,255,255,.95);box-shadow:var(--hl),0 1px 2px rgba(20,40,34,.06),0 4px 12px -4px rgba(20,40,34,.08)}
+.kc.late{background:#fdf3f1;border-color:#ecc6bf}
+.callout,.val,.drop,body .sup-dconta{border-radius:14px}
+.gtrack{border-radius:10px}
+th{background:rgba(242,244,244,.8)}
+.msg.me{background:linear-gradient(160deg,#2a3b36,var(--pine));border-radius:20px 20px 6px 20px;box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 6px 16px -6px rgba(20,40,34,.35)}
+.msg.ai .bub{border-radius:6px 18px 18px 18px;border-color:var(--edge);box-shadow:var(--hl),var(--shadow)}
+.aiav,body .cv-av{background:linear-gradient(150deg,#34504a,var(--pine) 70%);border-radius:9px;box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 2px 6px -2px rgba(20,40,34,.4)}
+body .cv-c-ic{border-radius:10px}
+.tools span{background:rgba(255,255,255,.6);border-color:var(--edge)}
+/* linha que pede você: realce suave de âmbar que esmaece para a direita (sem faixa lateral) */
+.ld:has(> .ld-prazo.t-pede):not(.feito),.ap-it:has(> .ld > .ld-prazo.t-pede):not(.feito){background:linear-gradient(90deg,rgba(252,236,198,.55),rgba(252,236,198,0) 70%)}
+.ap-it .ld{background:none!important}
+
+/* vidro: campo da conversa e "Perguntar sobre isto" */
+.composer{position:relative;isolation:isolate;border-radius:24px;border-color:rgba(255,255,255,.8);background:none;
+  box-shadow:var(--hl),0 0 0 1px var(--edge),var(--shadowUp)}
+.composer:focus-within{border-color:var(--accent);box-shadow:var(--hl),0 0 0 3px rgba(224,154,43,.22),var(--shadowUp)}
+.chip,body .cv-chip{background:rgba(255,255,255,.8);border-color:var(--edge);box-shadow:var(--hl),0 1px 2px rgba(20,40,34,.05)}
+.vs-perg{border-radius:var(--rp);padding:6px 6px 6px 18px;border-color:rgba(255,255,255,.8);background:var(--glassStrong);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+  box-shadow:var(--hl),0 0 0 1px var(--edge),var(--shadowUp);position:relative;z-index:2;margin-top:-62px}
+.visao .page{padding-bottom:84px}
+.vs-perg:focus-within{border-color:var(--accent);box-shadow:var(--hl),0 0 0 3px rgba(224,154,43,.22),var(--shadowUp)}
+.vs-enviar{border-radius:var(--rp);width:34px;height:34px}
+
+/* vidro: menus, autocompletar, modal, drawer, toast */
+.ca-menu-pop,body .mm-pop,.ca-ac{border-radius:16px;background:rgba(255,255,255,.86);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+  border:1px solid rgba(255,255,255,.8);box-shadow:var(--hl),0 0 0 1px var(--edge),var(--shadowUp)}
+.ca-menu-pop button,body .mm-pop button,.ca-ac [role=option]{border-radius:10px}
+.ca-menu-pop button:hover,body .mm-pop button:hover,.ca-ac [aria-selected=true]{background:rgba(28,52,45,.07)}
+.pop-g + .pop-g,.pop-nota,.pop-cab{border-color:var(--edge)}
+.modal{background:rgba(20,34,30,.30);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.modal .box{border-radius:22px;background:rgba(255,255,255,.9);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+  border:1px solid rgba(255,255,255,.8);box-shadow:var(--hl),0 0 0 1px var(--edge),0 2px 4px rgba(20,40,34,.06),0 24px 64px -12px rgba(20,40,34,.32)}
+.modal .box > .row:last-child:has(.btn){background:rgba(255,255,255,.86);border-top-color:var(--edge)}
+.drawer{background:rgba(20,34,30,.2)}
+.drawer .pane{margin:10px;height:calc(100% - 20px);border-radius:22px;background:rgba(238,241,241,.86);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+  border:1px solid rgba(255,255,255,.7);box-shadow:var(--hl),0 24px 64px -12px rgba(20,40,34,.3)}
+.toast{border-radius:14px;background:rgba(24,38,34,.9);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 12px 32px -8px rgba(20,40,34,.4)}
+.toast.neutro{background:var(--glassStrong);border-color:rgba(255,255,255,.8);box-shadow:var(--hl),0 0 0 1px var(--edge),var(--shadowUp)}
+.ca-vazio .aiav{border-radius:12px}
+.ca-vazio b,.ca-dica kbd{border-color:var(--edge);background:rgba(255,255,255,.7)}
+
+/* #campo no celular: só forma e profundidade, sem vidro (desempenho) */
+body .wa-b{border-radius:16px;box-shadow:0 1px 1px rgba(20,40,34,.06),0 4px 12px -6px rgba(20,40,34,.14)}
+body .wa-dia{border-radius:var(--rp);box-shadow:0 1px 2px rgba(20,40,34,.06)}
+body .wa-btn{box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 1px 2px rgba(20,40,34,.08)}
+body .wa-btn.pri{background:linear-gradient(180deg,#2c3a35,var(--pine));box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 6px 14px -6px rgba(20,40,34,.45)}
+body .wa-inp{box-shadow:0 1px 2px rgba(20,40,34,.08)}
+body .bx-chip{border-radius:14px}
+
+/* sem vidro: fundo opaco */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  .app>.side{background:var(--side)}
+  .app>.ses-top::before,.composer::before,.vs-perg,.ca-menu-pop,body .mm-pop,.ca-ac,.modal .box,.toast.neutro{background:#fff}
+  .drawer .pane{background:var(--bg)} .toast{background:var(--pine)}
+}
 
 /* ---------------- tela pequena ---------------- */
 /* Abaixo de 1100 px o painel do gerente não cabe; o aviso oferece a saída: a tela do canteiro (#campo). */

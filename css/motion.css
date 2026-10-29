@@ -1,0 +1,104 @@
+/* ===================== MOVIMENTO =====================
+   Uma linguagem só: ease-out forte (--mv-ease), 150–250 ms, só transform/opacity (blur curto só em troca de estado).
+   Nada anima em ação de alta frequência (digitar, rolar, mover o foco). As entradas pontuais (troca de aba, bolha nova,
+   aprovar, contador, menus, grupos da lateral) são disparadas pelo js/motion.js; aqui ficam o desenho e os estados. */
+:root{
+  --mv-ease:cubic-bezier(.23,1,.32,1);
+  --mv-ease-io:cubic-bezier(.77,0,.175,1);
+  --mv-rapido:160ms;
+  --mv-base:220ms;
+}
+
+/* ---------- 2. mensagem nova: a bolha sobe 8 px; no agente, avatar e cartões entram em stagger (máx. 5) ---------- */
+@keyframes mvSobe{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes mvAparece{from{opacity:0}to{opacity:1}}
+.msg.me.cv-entra,.msg.mv-entra{animation:mvSobe var(--mv-base) var(--mv-ease) both;transform-origin:bottom right}
+.cv-ai.cv-entra{animation:none}
+.cv-ai.cv-entra > .cv-av{animation:mvAparece var(--mv-rapido) var(--mv-ease) both}
+.cv-ai.cv-entra .cv-corpo > *{animation:mvSobe var(--mv-base) var(--mv-ease) both}
+.cv-ai.cv-entra .cv-corpo > :nth-child(2){animation-delay:40ms}
+.cv-ai.cv-entra .cv-corpo > :nth-child(3){animation-delay:80ms}
+.cv-ai.cv-entra .cv-corpo > :nth-child(4){animation-delay:120ms}
+.cv-ai.cv-entra .cv-corpo > :nth-child(n+5){animation-delay:160ms}
+.msg.cv-entra + .msg.cv-entra .cv-corpo > *{animation-delay:60ms}
+
+/* ---------- 3. "usando ferramentas…": um brilho passa sobre o balão (transform só; o texto não vira gradiente) ---------- */
+.ca-pensando.mv-entra{animation:mvSobe var(--mv-base) var(--mv-ease) both}
+.ca-pensando .bub{position:relative;overflow:hidden;isolation:isolate}
+.ca-pensando .bub::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(100deg,transparent 0 30%,rgba(255,255,255,.75) 50%,transparent 70% 100%);
+  transform:translateX(-100%);animation:mvBrilho 1.6s var(--mv-ease-io) infinite}
+.ca-pensando .bub .ic{animation:mvGira 1.6s var(--mv-ease-io) infinite;transform-origin:50% 50%}
+@keyframes mvBrilho{to{transform:translateX(100%)}}
+@keyframes mvGira{0%,55%{transform:none}75%{transform:rotate(-14deg)}100%{transform:none}}
+
+/* ---------- 4. aprovar: crossfade do botão para "Aprovado · Desfazer", check que se desenha, realce verde que esmaece ---------- */
+.ld{position:relative}
+.ld.mv-aprovou::after{content:"";position:absolute;inset:0;pointer-events:none;background:rgba(47,125,84,.12);animation:mvEsmaece 1.1s var(--mv-ease) .12s both}
+.ld.mv-aprovou .ld-feito{animation:mvTroca var(--mv-base) var(--mv-ease) both}
+.ld.mv-aprovou .ld-feito svg path{stroke-dasharray:1;stroke-dashoffset:1;animation:mvTraco 320ms var(--mv-ease) 90ms forwards}
+.ld.mv-voltou .ld-acts{animation:mvTroca var(--mv-base) var(--mv-ease) both}
+@keyframes mvTroca{from{opacity:0;transform:translateY(3px);filter:blur(2px)}to{opacity:1;transform:none;filter:none}}
+@keyframes mvTraco{to{stroke-dashoffset:0}}
+@keyframes mvEsmaece{from{opacity:1}to{opacity:0}}
+
+/* ---------- 5. menus "+" e "⋯": crescem a partir do gatilho (a origem é posta pelo motion.js) ---------- */
+.mm-pop,.ca-menu-pop{animation:none}
+@keyframes mvPop{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+
+/* ---------- 6. grupos da lateral: abre e fecha por grid-template-rows (0fr ↔ 1fr), a seta gira ---------- */
+.grp-l.mv-abre,.grp-l.mv-fecha{display:grid;grid-template-rows:1fr}
+.grp-l.mv-fecha[hidden]{display:grid}
+.grp-l.mv-abre{animation:mvGrpAbre var(--mv-base) var(--mv-ease) both}
+.grp-l.mv-fecha{animation:mvGrpFecha 180ms var(--mv-ease) both;pointer-events:none}
+.mv-grp-in{display:flex;flex-direction:column;gap:1px;min-height:0}
+.mv-abre > .mv-grp-in,.mv-fecha > .mv-grp-in{overflow:hidden}
+@keyframes mvGrpAbre{from{grid-template-rows:0fr;opacity:0}to{grid-template-rows:1fr;opacity:1}}
+@keyframes mvGrpFecha{from{grid-template-rows:1fr;opacity:1}to{grid-template-rows:0fr;opacity:0}}
+
+/* ---------- 7. press e elevação: scale(.97) no :active; cartões clicáveis sobem 2 px (a sombra maior é um ::after que só muda opacidade) ---------- */
+.aba,.nav,.side .grp,.foot,.cv-chip,.kc .btn{transition-property:color,background-color,border-color,transform;transition-duration:.12s;transition-timing-function:var(--mv-ease)}
+.aba:active,.nav:active,.side .grp:active,.foot:active,.aba-x:active{transform:scale(.97)}
+.wscard,.kc{transition:transform var(--mv-base) var(--mv-ease),border-color .12s var(--mv-ease)}
+.wscard{position:relative}
+.wscard::after,.kc::after{content:"";position:absolute;inset:-1px;border-radius:inherit;pointer-events:none;
+  box-shadow:0 2px 4px rgba(23,32,29,.05),0 12px 28px rgba(23,32,29,.12);opacity:0;transition:opacity var(--mv-base) var(--mv-ease)}
+.wscard:active{transform:scale(.99)}
+@media (hover:hover) and (pointer:fine){
+  .wscard:hover{transform:translateY(-2px)}
+  .kc:hover{transform:translateY(-1px)}
+  .wscard:hover::after,.kc:hover::after{opacity:1}
+  .wscard:hover:active{transform:translateY(-1px) scale(.99)}
+}
+
+/* ---------- 8. contador que muda: um pop curto ---------- */
+.mv-conta{animation:mvConta 260ms var(--mv-ease) both}
+@keyframes mvConta{0%{transform:scale(.7);opacity:.3}60%{transform:scale(1.12);opacity:1}100%{transform:none}}
+
+/* ---------- 9. toast, modal e drawer na mesma linguagem ---------- */
+.toast{transform:translate(-50%,10px) scale(.97);transition:opacity var(--mv-base) var(--mv-ease),transform var(--mv-base) var(--mv-ease)}
+.toast.on{transform:translate(-50%,0)}
+.modal.on{animation:mvAparece 180ms var(--mv-ease)}
+.modal.on .box{animation:mvModal var(--mv-base) var(--mv-ease)}
+.drawer.on{animation:mvAparece var(--mv-base) var(--mv-ease)}
+.drawer.on .pane{animation:mvDrawer 240ms var(--mv-ease)}
+@keyframes mvModal{from{opacity:0;transform:translateY(6px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes mvDrawer{from{opacity:0;transform:translateX(32px)}to{opacity:1;transform:none}}
+body.campo-mode .modal.on .box{animation:sheetIn 240ms var(--mv-ease)}
+
+/* ---------- movimento reduzido: só opacidade, nada se desloca, nada fica girando ---------- */
+@media (prefers-reduced-motion:reduce){
+  @keyframes mvSobe{from{opacity:0}to{opacity:1}}
+  @keyframes mvTroca{from{opacity:0}to{opacity:1}}
+  @keyframes mvModal{from{opacity:0}to{opacity:1}}
+  @keyframes mvDrawer{from{opacity:0}to{opacity:1}}
+  @keyframes mvConta{from{opacity:.4}to{opacity:1}}
+  @keyframes mvGrpAbre{from{opacity:0}to{opacity:1}}
+  @keyframes mvGrpFecha{from{opacity:1}to{opacity:0}}
+  .cv-ai.cv-entra .cv-corpo > *{animation-delay:0s!important}
+  .ca-pensando .bub::after{display:none}
+  .ca-pensando .bub .ic{animation:none}
+  .ld.mv-aprovou .ld-feito svg path{animation:none;stroke-dashoffset:0}
+  .toast,.toast.on{transform:translate(-50%,0)}
+  .aba:active,.nav:active,.side .grp:active,.foot:active,.aba-x:active,.wscard:active,.wscard:hover,.kc:hover,.wscard:hover:active{transform:none}
+}
