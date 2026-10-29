@@ -188,14 +188,13 @@ tabHoje = function(o){
   const iFoco=itens.findIndex(i=>!i.feito), n=itens.filter(i=>!i.feito).length;
   const lista = itens.length ? itens.map((i,k)=>i.html(k===iFoco))
     : [linhaDecisao({prazo:'em dia', tom:'ok', titulo:'Nada pede você nesta obra agora', conta:'O agente avisa aqui quando algo precisar do seu OK.'})];
-  const e=typeof EQ!=='undefined'&&EQ[o.id], diff=o.previsto-o.budget;
+  const diff=o.previsto-o.budget;
   return `<div class="g-head"><h2 class="g-h2">O que pede você${n?` · ${n}`:''}</h2><span class="sp"></span>
       <a class="link" href="#aprovacoes" onclick="go('aprovacoes');return false">Aprovações de todas as obras ${icon('arrowRight',13)}</a></div>
     ${listaDecisoes(lista)}
-    <div class="grid g3 g-kpis">
+    <div class="grid g2 g-kpis">
       ${kpi({rotulo:'Entrega prevista', valor:o.previsao, contexto:`${prazoTxt(o)} · contrato ${o.prazo}`, tom:o.atraso>0?'perda':'ok'})}
       ${kpi({rotulo:'Custo projetado', valor:brl(o.previsto), contexto:`${diff>0?'+':'−'}${brl(Math.abs(diff))} sobre a verba de ${brl(o.budget)}`, tom:diff>0?'pede':'ok'})}
-      ${e?kpi({rotulo:'Na obra hoje', valor:`${e.hoje.length} pessoas`, contexto:e.src.replace(/^da /,'')}):kpi({rotulo:'Obra executada', valor:o.progresso+'%', contexto:`fase ${o.fase}`})}
     </div>`;
 };
 
@@ -210,10 +209,9 @@ function gHojeOrcando(o){
   return `<div class="g-head"><h2 class="g-h2">${lista.length?`O agente espera ${lista.length} ${lista.length>1?'respostas suas':'resposta sua'}`:'O agente está montando o orçamento'}</h2></div>
     ${lista.length?listaDecisoes(lista):''}
     <p class="g-nota">Quando você aprovar o orçamento, o agente cria as etapas, os insumos, os pedidos e o cronograma, e as outras abas abrem.</p>
-    <div class="grid g3 g-kpis">
-      ${kpi({rotulo:'Orçamento-alvo', valor:brl(o.budget), contexto:o.tipo})}
+    <div class="grid g2 g-kpis">
+      ${kpi({rotulo:'Orçamento-alvo', valor:brl(o.budget), contexto:`${o.tipo} · início ${G.inicio}${G.duracao?', '+G.duracao:''}`})}
       ${kpi({rotulo:'Prévia do agente', valor:G.previa, contexto:G.previaCtx, projecao:'estimativa'})}
-      ${kpi({rotulo:'Início', valor:G.inicio, contexto:G.duracao||`entrega desejada ${o.prazo}`})}
     </div>`;
 }
 
@@ -313,8 +311,7 @@ tabOverview = function(o){
       ${botao('Ver sobras no estoque entre obras', "go('estoque')", {icone:'swap'})}</div>`;
   return `${val('Fonte e selo de confiança por linha bastam para o gerente defender o número diante do cliente? Que margem ele aceita (5%? 10%)?')}
   ${decisao}
-  <div class="grid g3 g-kpis">
-    ${kpi({rotulo:'Projeção do agente', valor:brl(o.previsto), contexto:`${sinal(diff)} (${diff>0?'+':''}${dPct}%) sobre a verba de ${brl(o.budget)}${aplV?` · ${apl.length} economia${apl.length>1?'s':''} aplicada${apl.length>1?'s':''}`:''}`, tom:diff>0?'pede':'ok'})}
+  <div class="grid g2 g-kpis">
     ${kpi({rotulo:'Já gasto (pago)', valor:brl(o.gasto), contexto:`${g}% da verba · obra em ${p}%${gap>5?' · dinheiro à frente do serviço':gap>0?` · ${gap} p.p. à frente, normal`:''}`})}
     ${kpi({rotulo:'Comprometido (pedidos)', valor:brl(o.comprometido), contexto:`inclui ${brl(o.comprometido-o.gasto)} a pagar`})}
   </div>
@@ -402,7 +399,7 @@ function gRdoFull(o,r){
       ${pill(r.st==='enviado'?'ok':'pede', r.stT)}</div>
     ${aguarda&&vila?`<div class="g-rev">${icon('mic',15)} <b>Áudio da Joana às 17h40, aguardando confirmação.</b> Os serviços, a baixa e a ocorrência entram aqui quando ela confirmar.
       <p>"Hoje assentamos 180 blocos no eixo B, uns 15 quebraram. Choveu das 3 às 5, parou tudo. Gastei 6 sacos de cimento na argamassa. Aço da Gerdau nada ainda."</p>
-      <div class="row" style="flex-wrap:wrap">${botao('Confirmar o áudio daqui','gRdoConfirmarAqui()',{pri:true,icone:'check'})}${botao('Ver no WhatsApp da mestre',"go('campo')",{icone:'message'})}</div></div>`:''}
+      <div class="row" style="flex-wrap:wrap">${botao('Confirmar o áudio daqui','gRdoConfirmarAqui()',{pri:true,icone:'check'})}${menuMais([{label:`${icon('message',15)}Ver no WhatsApp da mestre`, onclick:"go('campo')"}])}</div></div>`:''}
     <h3 class="g-sec">Clima</h3>
     <div class="g-clima">${r.clima.map(c=>`<div><span style="color:${c.ic==='sun'?'var(--amber)':'var(--blue)'};display:flex">${icon(c.ic,22)}</span><div style="min-width:0"><b>${c.p}</b> · ${c.t}<div style="margin-top:2px">${gSrc(c.src,/INMET/.test(c.src)?'info':'mic')}</div></div></div>`).join('')}</div>
     <h3 class="g-sec">Efetivo · ${ef} pessoas ${gSrc(r.efSrc,'message')}</h3>
@@ -416,10 +413,10 @@ function gRdoFull(o,r){
     ${r.ocorr.length?'':'<div class="g-li mut">Nenhuma ainda.</div>'}${r.ocorr.map(c=>`<div class="g-li">${icon(c[0],15)}<div style="flex:1;min-width:0">${c[1]}</div>${gSrc(c[2],c[2].startsWith('calculado')?'spark':/pedido/.test(c[2])?'package':'mic')}</div>`).join('')}
     <h3 class="g-sec">Fotos · ${r.fotos.length}</h3>
     <div class="g-fotos">${r.fotos.map(f=>`<div class="g-foto"><div class="img" style="background:linear-gradient(135deg,${f[2]},#2b3330)">${icon('camera',22)}</div><div class="cap"><b style="font-weight:500">${f[0]}</b><div class="mut">${f[1]}</div></div></div>`).join('')}</div>
-    <div class="row" style="margin-top:24px;flex-wrap:wrap">${botao('Editar',"toast('(protótipo) editar o RDO antes de enviar')")}<span class="sp"></span>
-      ${botao('Gerar PDF para o cliente',`gRdoPdf('${o.id}',0)`,{icone:'printer'})}
+    <div class="row" style="margin-top:24px;flex-wrap:wrap"><span class="sp"></span>
+      ${menuMais([{label:'Editar', onclick:"toast('(protótipo) editar o RDO antes de enviar')"}, {label:`${icon('printer',15)}Gerar PDF para o cliente`, onclick:`gRdoPdf('${o.id}',0)`}])}
       ${r.st==='enviado'?pill('ok',icon('check',12)+'enviado')
-        :botao('Enviar ao cliente',`gRdoEnviar('${o.id}')`,{pri:!aguarda, desab:aguarda, title:aguarda?'Faltam os fatos do áudio das 17h40: confirme o áudio antes de enviar':''})}</div>
+        :aguarda?'':botao('Enviar ao cliente',`gRdoEnviar('${o.id}')`,{pri:true})}</div>
     ${aguarda&&r.st!=='enviado'?`<p class="g-nota" style="text-align:right;max-width:none">O envio libera quando o áudio for confirmado.</p>`:''}
   </div>`;
 }
@@ -541,9 +538,8 @@ function tabMedicoes(o){
       <td style="white-space:nowrap">${gHold(o.id,c)?pill('pede',icon('pause',12)+'pagamento segurado'):pill(c.exe===100?'ok':c.exe>0?'caminho':'info', c.st)}${icon('chevRight',16,'g-chev')}</td></tr>`; };
   return `${val('Medição por % executado de cada empreitada, com retenção de 5% e vales, é como eles pagam hoje? Quem aprova a medição: o gerente, o dono, os dois?')}
   ${alerta}
-  <div class="grid g3 g-kpis">
-    ${kpi({rotulo:`Contratado · ${F.length} contratos`, valor:brl(tot(c=>c.v)), contexto:A.length?`+ ${brl(A.reduce((a,c)=>a+c.v,0))} a contratar`:'todas as empreitadas fechadas'})}
-    ${kpi({rotulo:'Executado', valor:brl(tot(gExeR)), contexto:`${gPct(tot(gExeR),tot(c=>c.v))}% do contratado`})}
+  <div class="grid g2 g-kpis">
+    ${kpi({rotulo:'Executado', valor:brl(tot(gExeR)), contexto:`${gPct(tot(gExeR),tot(c=>c.v))}% de ${brl(tot(c=>c.v))} contratados em ${F.length} contratos${A.length?` · + ${brl(A.reduce((a,c)=>a+c.v,0))} a contratar`:''}`})}
     ${kpi({rotulo:'Pago (medições + vales)', valor:brl(tot(gPago)), contexto:sem?`<span><span style="color:var(--redInk)">${brl(sem)} acima do executado</span>${prev?`<br>+ ${brl(prev)} de adiantamento previsto`:''}</span>`:prev?`${brl(prev)} de adiantamento previsto no contrato`:'em linha com o executado'})}
   </div>
   <div class="card" style="padding:0;margin-top:var(--s5)">
@@ -704,8 +700,7 @@ tabEquipe = function(o){
   <div class="card" style="margin-top:var(--s5)"><h3>${icon('shield',17)}Pede você</h3>
       ${pede.length?listaDecisoes(pede):'<p class="mut">Nada pendente.</p>'}
       <p class="g-nota">${icon('checkCircle',13)} ${e.emDia}</p></div>
-  <div class="grid g3 g-kpis">
-    ${kpi({rotulo:'Na obra hoje', valor:`${hoje.length} pessoas`, contexto:`${hoje.length-nBloq} liberadas${nBloq?` · ${nBloq} bloqueada`:''}`})}
+  <div class="grid g2 g-kpis">
     ${kpi({rotulo:'Mão de obra em outubro', valor:brl(adm+med), contexto:`administração ${brl(adm)} + medições e vales ${brl(med)}`})}
     ${kpi({rotulo:vila?'Prazo perdido por falta de gente':'Vagas abertas', valor:vila?'+8 dias':'0', contexto:vila?'dos 21 de atraso previstos':`obra ${-o.atraso} dias adiantada`, tom:vila?'pede':'ok'})}
   </div>`;

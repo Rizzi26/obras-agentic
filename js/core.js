@@ -1,17 +1,20 @@
 /* =====================================================================================================
    BASE DO REDESIGN (design/direcao.md). Este bloco é a referência para quem escreve telas.
 
-   ROTAS (agente no centro; a casca está no fim deste arquivo, em CASCA)
-     #c/<sessaoId> ........................ a conversa
-     #c/<sessaoId>/v/<chave>[/<obraId>][/cheia]   a conversa com uma visão aberta ao lado (ou em tela cheia)
+   ROTAS (sessão com abas; a casca está no fim deste arquivo, em CASCA)
+     #c/<sessaoId> ........................ a sessão na aba Conversa
+     #c/<sessaoId>/t/<chave>[/<obraId>] ... a sessão com a aba dessa tela ativa (uma coisa por vez: ocupa a área toda)
        chave de obra = chave de TAB_FNS (hoje, componentes, kanban, inventario, entreobras, overview, medicoes,
        prazos, diario, equipe) e leva o obraId; chave global = chave de VIEWS (aprovacoes, estoque, hub), sem obra.
+       As abas abertas ficam na sessão: sessao.abas = [{chave, obra, filtro}], sessao.abaAtiva.
      #campo · #fluxos ..................... páginas inteiras, como antes
-     Compatibilidade: #home → #c/geral · #obra/<id>/<tela> → sessão mais recente da obra com a visão <tela> ·
-       #obra/<id> → idem com 'hoje' · #obra/<id>/chat → a sessão da obra, sem visão · #aprovacoes/#estoque/#hub →
-       Geral com a visão aberta. go(view, obra, tab) continua valendo no código todo: vira abrirVisao na sessão atual.
-     Tela nova de obra: TAB_FNS.chave = o => html (+ GRUPOS[i].telas.push(['chave','Rótulo']) para os contadores).
-     state.view/obra/tab continuam sendo preenchidos (view 'obra' com a visão de obra aberta) para quem os lê.
+     Compatibilidade: #c/<id>/v/<chave>[/<obra>][/cheia] → /t/ · #home → #c/geral · #obra/<id>/<tela> → aba <tela> na
+       sessão mais recente da obra · #obra/<id> → idem com 'hoje' · #obra/<id>/chat → a sessão da obra, aba Conversa ·
+       #aprovacoes/#estoque/#hub → Geral com a aba aberta. go(view, obra, tab) continua valendo no código todo: vira
+       abrirVisao (abre ou ativa a aba) na sessão atual.
+     Tela nova de obra: TAB_FNS.chave = o => html (+ GRUPOS[i].telas.push(['chave','Rótulo']) para os contadores;
+       + MENU_ABAS para aparecer no "+").
+     state.view/obra/tab continuam sendo preenchidos (view 'obra' com a aba de obra ativa) para quem os lê.
 
    COMPONENTES GLOBAIS (todos devolvem HTML; onclick é sempre uma string de JS, como no resto do protótipo)
      linhaDecisao({prazo, tom, obra, titulo, conta, valor, acao:{label,onclick}, sec:[{label,onclick}], estado, foco, doc})
@@ -30,7 +33,7 @@
        ao chegar, o elemento com data-doc="PED-0162" (ou o menor cartão/linha com o código) pisca 1 s.
      kpi({rotulo, valor, contexto, projecao, tom})  no máximo 3 por tela; projecao:true → selo "se aprovar".
      segmento(itens, ativo, {rotulo})  itens [{k, label, n, onclick}]: controle segmentado (2º nível ou filtro).
-     val(texto)  nota de validação: faixa fina recolhível, no topo da tela; some com "Notas de validação" desligadas.
+     val(texto)  nota de validação: faixa fina recolhível, no topo da tela; começa desligada (liga no menu do perfil).
      toast(texto) · toastDesfazer(texto, fnDesfazer)  aria-live; "(protótipo) …" sai na variante neutra.
      abrirModal(html) · closeModal() · closeDrawer()  Modal grava, drawer consulta. Preencher #modalBox/#drawerPane e
        ligar a classe 'on' continua valendo: a base põe role="dialog", X, Esc, foco preso e devolvido, rodapé fixo (o
@@ -38,7 +41,9 @@
    ===================================================================================================== */
 
 /* ===================== ESTADO / ROTAS ===================== */
-/* modo 'c' = conversa (+ visão opcional) · 'campo' · 'fluxos'. view/obra/tab são derivados (compatibilidade). */
+/* modo 'c' = sessão (aba Conversa ou uma aba de tela) · 'campo' · 'fluxos'. state.visao = a aba de tela ativa
+   ({chave, obra, filtro}, o mesmo objeto guardado em sessao.abas) ou null na aba Conversa. view/obra/tab são
+   derivados (compatibilidade). */
 let state = {modo:'c', sessao:'geral', visao:null, view:'conversa', obra:null, tab:'hoje'};
 const PAGINAS = ['campo','fluxos'];
 const ehVisaoObra = k => !!(k && TAB_FNS[k]);
@@ -50,25 +55,47 @@ function compat(s){
   s.tab = v&&v.obra ? v.chave : 'hoje';
   return s;
 }
-/* Traduz a navegação antiga (view, obra, tab) para o estado novo. op.recente: vindo da URL (#obra/…), usa a sessão
-   mais recente da obra (ou a Geral); vindo do código (go), fica na sessão atual e só abre a visão. */
-function rota(view, obra, tab, op={}){
-  const atual = state.modo==='c' ? state.sessao : (CASCA.ultima||idGeral()), va=state.visao;
-  const cheia = op.cheia ?? !!(va && va.cheia), filtro = op.filtro || null;
-  if(PAGINAS.includes(view)) return compat({modo:view, sessao:atual, visao:null});
-  if(!view || view==='home' || view==='conversa') return compat({modo:'c', sessao:idGeral(), visao:null});
-  if(view==='obra'){
-    if(!OBRAS.some(o=>o.id===obra)) return compat({modo:'c', sessao:atual, visao:null});
-    if(tab==='chat'){ CASCA.focar=true; return compat({modo:'c', sessao:sessaoDaObra(obra), visao:null}); }
-    return compat({modo:'c', sessao: op.recente ? sessaoDaObra(obra) : atual, visao:{chave:ehVisaoObra(tab)?tab:'hoje', obra, filtro, cheia}});
-  }
-  if(ehVisaoGlobal(view)) return compat({modo:'c', sessao: op.recente ? idGeral() : atual, visao:{chave:view, obra:null, filtro, cheia}});
-  return compat({modo:'c', sessao:atual, visao:null});
+/* ---------- abas da sessão: sessao.abas = [{chave, obra, filtro}], sessao.abaAtiva = 'conversa' | 'chave/obra' ---------- */
+const MAX_ABAS = 5;                                            // a mais antiga fora da vista sai quando passa disso
+const chaveAba = a => a ? a.chave+'/'+(a.obra||'') : 'conversa';
+const abasDe = s => s.abas || (s.abas=[]);
+function normAba(chave, obraId, sesId, filtro){
+  if(ehVisaoObra(chave)) return {chave, obra: OBRAS.some(o=>o.id===obraId) ? obraId : obraPadrao(sesId), filtro:filtro||null};
+  if(ehVisaoGlobal(chave)) return {chave, obra:null, filtro:filtro||null};
+  return null;
 }
+/* Ativa a aba na sessão (cria se ainda não existe) e devolve o estado. filtro: undefined = mantém o da aba. */
+function estadoSessao(sesId, aba, filtro){
+  const s=sessoes().find(x=>x.id===sesId) || sessaoAtual(), L=abasDe(s), k=chaveAba(aba);
+  let v = aba && L.find(y=>chaveAba(y)===k);
+  if(aba && !v){ v={chave:aba.chave, obra:aba.obra, filtro:aba.filtro||null}; L.push(v);
+    while(L.length>MAX_ABAS) L.splice(L.findIndex(y=>y!==v), 1); }
+  else if(v && filtro!==undefined) v.filtro=filtro||null;
+  s.abaAtiva=k;
+  return compat({modo:'c', sessao:s.id, visao:v||null});
+}
+/* Traduz a navegação antiga (view, obra, tab) num destino {modo, sessao, visao, filtro} (sem mexer em nada).
+   op.recente: vindo da URL (#obra/…), usa a sessão mais recente da obra (ou a Geral); vindo do código (go), fica na
+   sessão atual e abre (ou ativa) a aba. */
+function rota(view, obra, tab, op={}){
+  const atual = state.modo==='c' ? state.sessao : (CASCA.ultima||idGeral()), f = 'filtro' in op ? op.filtro||null : undefined;
+  const d = (sessao, visao) => ({modo:'c', sessao, visao, filtro:f});
+  if(PAGINAS.includes(view)) return {modo:view, sessao:atual, visao:null};
+  if(!view || view==='home' || view==='conversa') return d(idGeral(), null);
+  if(view==='obra'){
+    if(!OBRAS.some(o=>o.id===obra)) return d(atual, null);
+    if(tab==='chat'){ CASCA.focar=true; return d(sessaoDaObra(obra), null); }
+    const ses = op.recente ? sessaoDaObra(obra) : atual;
+    return d(ses, normAba(ehVisaoObra(tab)?tab:'hoje', obra, ses, f));
+  }
+  if(ehVisaoGlobal(view)){ const ses = op.recente ? idGeral() : atual; return d(ses, normAba(view, null, ses, f)); }
+  return d(atual, null);
+}
+const aplicar = d => d.modo==='c' ? estadoSessao(d.sessao, d.visao, d.filtro) : compat({modo:d.modo, sessao:d.sessao, visao:null});
 function hashDe(s){
   if(s.modo!=='c') return '#'+s.modo;
   const v=s.visao;
-  return '#c/'+encodeURIComponent(s.sessao)+(v?'/v/'+v.chave+(v.obra?'/'+v.obra:'')+(v.cheia?'/cheia':''):'');
+  return '#c/'+encodeURIComponent(s.sessao)+(v?'/t/'+v.chave+(v.obra?'/'+v.obra:''):'');
 }
 const hashPara = (view, obra, tab) => hashDe(rota(view, obra, tab));
 function navegar(trocar){
@@ -77,17 +104,15 @@ function navegar(trocar){
   render();
   if(CASCA.focar){ CASCA.focar=false; focarCampo(); }
 }
-function go(view, obra, tab, op){ state=rota(view, obra, tab, op); navegar(); }
+function go(view, obra, tab, op){ state=aplicar(rota(view, obra, tab, op)); navegar(); }
+/* #c/<sessao>[/t/<chave>[/<obra>]]; o /v/…[/cheia] antigo vale igual (não há mais tela cheia). */
 window.onhashchange = () => {
   const p=location.hash.slice(1).split('/').map(decodeURIComponent); if(!p[0]) return;
   if(p[0]==='c'){
-    const ses = sessoes().some(s=>s.id===p[1]) ? p[1] : idGeral(); let visao=null;
-    if(p[2]==='v' && p[3]){ const r=p.slice(4), k=p[3], ob=r[0]&&r[0]!=='cheia' ? r.shift() : null, cheia=r[0]==='cheia';
-      if(ehVisaoObra(k)) visao={chave:k, obra:OBRAS.some(o=>o.id===ob)?ob:obraPadrao(ses), filtro:null, cheia};
-      else if(ehVisaoGlobal(k)) visao={chave:k, obra:null, filtro:null, cheia};
-      const va=state.visao; if(visao && va && va.chave===visao.chave && va.obra===visao.obra) visao.filtro=va.filtro; }
-    state=compat({modo:'c', sessao:ses, visao});
-  } else state=rota(p[0], p[1], p[2], {recente:true});
+    const ses = sessoes().some(s=>s.id===p[1]) ? p[1] : idGeral();
+    const aba = (p[2]==='t'||p[2]==='v') && p[3] ? normAba(p[3], p[4]&&p[4]!=='cheia' ? p[4] : null, ses) : null;
+    state=estadoSessao(ses, aba);
+  } else state=aplicar(rota(p[0], p[1], p[2], {recente:true}));
   const h=hashDe(state); if(location.hash!==h) history.replaceState(null,'',h);
   CASCA.side=false; render();
   if(CASCA.focar){ CASCA.focar=false; focarCampo(); }
@@ -124,6 +149,67 @@ function toastDesfazer(msg, desfazer){
 }
 
 /* ===================== COMPONENTES GLOBAIS ===================== */
+/* Menu "⋯": guarda as ações secundárias. menuMais([{label, onclick}], {rotulo}) → botão com menu (role=menu).
+   Abre por clique ou teclado (↓/Enter/Espaço foca o 1º item), ↑↓ Home End navegam, Esc fecha e devolve o foco,
+   Tab ou clique fora fecham. O menu é fixed (escapa do overflow das listas) e abre para cima se não couber. */
+ICONS.more ||= '<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/>';
+let MM_N = 0;
+const MM = {aberto:null};
+function menuMais(itens, op={}){
+  const its=(itens||[]).filter(i=>i && i.label); if(!its.length) return '';
+  const id='mm'+(++MM_N), rot=op.rotulo||'Mais ações';
+  return `<span class="mm"><button type="button" class="mm-b${op.sm===false?'':' sm'}" aria-haspopup="menu" aria-expanded="false" aria-controls="${id}" aria-label="${esc(rot)}" title="${esc(rot)}" onclick="event.stopPropagation();mmAlternar(this)" onkeydown="mmTeclaBotao(event,this)">${icon('more',16)}</button>`+
+    `<span class="mm-pop" id="${id}" role="menu" aria-label="${esc(rot)}" hidden>${its.map(i=>`<button type="button" role="menuitem" tabindex="-1" onclick="event.stopPropagation();mmFechar();${i.onclick}">${i.label}</button>`).join('')}</span></span>`;
+}
+function mmItens(pop){ return [...pop.querySelectorAll('[role=menuitem]')]; }
+function mmAbrir(b, focar){
+  mmFechar();
+  const pop=$(b.getAttribute('aria-controls')); if(!pop) return;
+  pop.hidden=false; b.setAttribute('aria-expanded','true'); MM.aberto={b, pop};
+  const r=b.getBoundingClientRect(), w=pop.offsetWidth, h=pop.offsetHeight, cima=r.bottom+6+h>innerHeight-8 && r.top-6-h>8;
+  pop.style.left=Math.max(8, Math.min(innerWidth-w-8, r.right-w))+'px';
+  pop.style.top=(cima ? r.top-6-h : r.bottom+6)+'px';
+  pop.classList.toggle('cima', cima);
+  if(focar) (focar==='fim' ? mmItens(pop).pop() : mmItens(pop)[0]).focus({preventScroll:true});
+}
+function mmFechar(devolver){
+  const a=MM.aberto; if(!a) return; MM.aberto=null;
+  a.pop.hidden=true; a.b.setAttribute('aria-expanded','false');
+  if(devolver && document.contains(a.b)) a.b.focus({preventScroll:true});
+}
+function mmAlternar(b){ MM.aberto && MM.aberto.b===b ? mmFechar() : mmAbrir(b, b.matches(':focus-visible')); }
+function mmTeclaBotao(e, b){
+  if(e.key==='ArrowDown' || e.key==='ArrowUp'){ e.preventDefault(); mmAbrir(b, e.key==='ArrowUp'?'fim':true); }
+  else if((e.key==='Enter' || e.key===' ') && !(MM.aberto && MM.aberto.b===b)){ e.preventDefault(); mmAbrir(b, true); }
+}
+document.addEventListener('keydown', e=>{
+  const a=MM.aberto; if(!a) return;
+  if(!document.contains(a.pop)){ MM.aberto=null; return; }
+  if(e.key==='Escape'){ e.preventDefault(); e.stopImmediatePropagation(); return mmFechar(true); }
+  if(e.key==='Tab'){ return mmFechar(); }
+  if(!a.pop.contains(document.activeElement)) return;
+  const it=mmItens(a.pop), i=it.indexOf(document.activeElement), ir=k=>{ e.preventDefault(); it[(k+it.length)%it.length].focus(); };
+  if(e.key==='ArrowDown') ir(i+1); else if(e.key==='ArrowUp') ir(i-1); else if(e.key==='Home') ir(0); else if(e.key==='End') ir(it.length-1);
+}, true);
+document.addEventListener('pointerdown', e=>{ const a=MM.aberto; if(a && !a.pop.contains(e.target) && !a.b.contains(e.target)) mmFechar(); }, true);
+addEventListener('scroll', e=>{ const a=MM.aberto; if(a && !a.pop.contains(e.target)) mmFechar(); }, true);
+addEventListener('resize', ()=>mmFechar());
+document.addEventListener('rendered', ()=>{ if(MM.aberto && !document.contains(MM.aberto.b)) MM.aberto=null; });
+addCSS(`
+.mm{display:inline-flex;position:relative}
+.mm-b{display:inline-grid;place-items:center;width:32px;height:32px;padding:0;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink2);box-shadow:0 1px 1px rgba(23,32,29,.04);transition:background-color .12s var(--ease),border-color .12s var(--ease),transform .12s var(--ease)}
+.mm-b.sm{width:28px;height:28px}
+.mm-b[aria-expanded=true]{background:var(--sunk);border-color:#c3cbc8;color:var(--ink)}
+.mm-b:active{transform:scale(.97)}
+.mm-pop{position:fixed;z-index:60;min-width:200px;max-width:320px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 32px rgba(23,32,29,.14);padding:6px;display:flex;flex-direction:column;transform-origin:top right;animation:mmIn .14s cubic-bezier(.23,1,.32,1)}
+.mm-pop.cima{transform-origin:bottom right}
+.mm-pop[hidden]{display:none}
+.mm-pop button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;text-align:left;padding:8px 10px;border-radius:7px;font-size:var(--t-body);color:var(--ink);white-space:normal;line-height:1.35}
+.mm-pop button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;background:var(--sunk)}
+@keyframes mmIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+@media (hover:hover){ .mm-b:hover{background:var(--sunk);color:var(--ink)} .mm-pop button:hover{background:var(--sunk)} }
+@media (prefers-reduced-motion:reduce){ .mm-pop{animation:fadeIn .1s linear} .mm-b:active{transform:none} }
+`);
 /* Nota de validação: faixa fina recolhível com visual de pesquisa (não é pendência do produto). */
 function val(texto){
   return `<details class="val"><summary>${icon('flask',14)}<span class="vt">Validar</span><span class="vq">${texto}</span>${icon('chevDown',14,'chev')}</summary></details>`;
@@ -148,7 +234,8 @@ function linhaDecisao({prazo='', tom='pede', obra:ob, titulo, conta, valor, acao
   const feito = estado && typeof estado==='object' && estado.feito;
   const acts = feito
     ? `<div class="ld-feito">${icon('check',14)}${estado.feito}${estado.hora?' '+estado.hora:''}${estado.quem?' por '+estado.quem:''}${estado.desfazer?` · <button type="button" onclick="${estado.desfazer}">Desfazer</button>`:''}</div>`
-    : `${sec.map(s=>botao(s.label, s.onclick, {sm:true})).join('')}${acao?botao(acao.label, acao.onclick, {pri:!!foco}):''}`;
+    : (()=>{ const [pri, ...resto] = acao ? [acao, ...sec] : sec;      // uma ação à vista (a principal); o resto no "⋯"
+        return `${pri?botao(pri.label, pri.onclick, {pri:!!foco&&!!acao}):''}${menuMais(resto, {rotulo:'Mais ações'})}`; })();
   return `<div class="ld${feito?' feito':''}"${doc?` data-doc="${doc}"`:''}><div class="ld-prazo t-${tom}">${prazo}</div>
     <div class="ld-txt"><div class="ld-tit">${nomeOb?`<span class="ld-obra">${nomeOb} · </span>`:''}${titulo}</div>${conta?`<div class="ld-conta">${conta}</div>`:''}</div>
     <div class="ld-valor">${v}</div><div class="ld-acts">${acts}</div></div>`;
@@ -183,42 +270,40 @@ const stDot = o => o.status==='risco'?'var(--red)':o.status==='ok'?'var(--green)
 const stTxt = o => o.status==='risco'?'em risco':o.status==='ok'?'no prazo':'em orçamento';
 function renderSide(){
   recalcTransf();
-  const v=state.visao, emC=state.modo==='c', ss=sessoes(), foco=CASCA.obraFoco=obraFoco();
+  const emC=state.modo==='c', ss=sessoes(), atual=emC && sessaoAtual();
+  CASCA.obraFoco=obraFoco();
   const sess = x => { const on=emC && state.sessao===x.id;
     return `<a class="nav sess ${on?'on':''}" href="#c/${encodeURIComponent(x.id)}"${on?' aria-current="page"':''} onclick="abrirSessao('${x.id}');return false" title="${esc(x.titulo)}"><span class="sess-t">${esc(x.titulo)}</span>${x.quando?`<small>${esc(x.quando)}</small>`:''}</a>`; };
-  const vis = (k, ob, n, off) => { const on=emC && v && v.chave===k && (v.obra||null)===(ob||null);
-    return `<a class="nav vs ${on?'on':''}${off?' off':''}" href="${hashDe({modo:'c', sessao:emC?state.sessao:idGeral(), visao:{chave:k, obra:ob}})}"${on?' aria-current="page"':''}${off?' title="Abre quando o orçamento for aprovado"':''} onclick="abrirVisao('${k}',${ob?`'${ob}'`:'null'});return false">${icon(VISAO_IC[k]||'list')}<span class="sess-t">${rotuloVisao(k)}</span>${n?`<span class="count" aria-label="${n} pendentes">${n}</span>`:''}</a>`; };
-  const page = n => { const on=state.modo===n.view, c=n.count&&n.count();
-    return `<a class="nav ${on?'on':''}" href="#${n.view}"${on?' aria-current="page"':''} onclick="go('${n.view}');return false">${icon(n.icon)}${n.label}${c?`<span class="count">${c}</span>`:''}</a>`; };
   const geral = ss.filter(x=>!x.escopo || x.escopo==='geral').sort((a,b)=>(b.id===idGeral())-(a.id===idGeral()));
-  const ap = NAV_EXTRA.find(n=>n.view==='aprovacoes'), paginas = NAV_EXTRA.filter(n=>PAGINAS.includes(n.view));
-  const globais = visoesGlobais().map(k=>vis(k, null, k==='aprovacoes'&&ap&&ap.count ? ap.count() : k==='estoque' ? TRANSF.filter(t=>t.sug>0).length : 0)).join('');
-  const of=OBRAS.find(o=>o.id===foco), plan=of&&of.status==='plan', pend=of?pendObra(of):[];
+  /* Grupo da obra: recolhido, a não ser o da sessão aberta (ou o que você abriu). Um contador só: pendências da obra. */
+  const grupo = o => { const xs=ss.filter(x=>x.escopo===o.id), n=pendObra(o).length, aqui=atual && atual.escopo===o.id;
+    const aberto = CASCA.grupos[o.id] ?? !!aqui;
+    return `<button type="button" class="grp" aria-expanded="${aberto}" aria-controls="grp-${o.id}" onclick="alternarGrupo('${o.id}',${aberto})" title="${o.nome} · ${stTxt(o)}">${icon('chevRight',14,'grp-chev')}<span class="dot" style="background:${stDot(o)}" aria-hidden="true"></span><span class="sess-t">${o.nome}</span>${n?`<span class="count" aria-label="${n} pendências">${n}</span>`:`<small>${o.status==='plan'?'orçando':o.progresso+'%'}</small>`}</button>
+      <div class="grp-l" id="grp-${o.id}"${aberto?'':' hidden'}>${xs.length ? xs.map(sess).join('') : `<button type="button" class="nav sess sess-nova" onclick="novaSessao('${o.id}')">${icon('plus',14)}Começar uma conversa</button>`}</div>`; };
   $('side').innerHTML = `
     <div class="brand"><div class="logo">${icon('spark',17)}</div>Canteiro<span class="tag">protótipo</span></div>
     <button type="button" class="side-nova" onclick="novaSessao(escopoAtual())">${icon('plus',16)}Nova conversa</button>
     <nav class="side-bloco" aria-label="Conversas">
-      <div class="sec">Conversas</div>
       ${geral.map(sess).join('')}
-      ${OBRAS.map(o=>{ const xs=ss.filter(x=>x.escopo===o.id), n=pendObra(o).length;
-        return `<div class="grp" title="${o.nome} · ${stTxt(o)}"><span class="dot" style="background:${stDot(o)}" aria-hidden="true"></span><span class="sess-t">${o.nome}</span>${n?`<span class="count" aria-label="${n} pendências">${n}</span>`:`<small>${o.status==='plan'?'orçando':o.progresso+'%'}</small>`}</div>
-          ${xs.length ? xs.map(sess).join('') : `<button type="button" class="nav sess sess-nova" onclick="novaSessao('${o.id}')">${icon('plus',14)}Começar uma conversa</button>`}`; }).join('')}
+      ${OBRAS.map(grupo).join('')}
     </nav>
-    <nav class="side-bloco" aria-label="Visões">
-      <div class="sec">Visões</div>
-      ${globais}
-      <div class="vs-sel"><label class="sr-only" for="vsObra">Visões da obra</label>
-        <select id="vsObra" onchange="CASCA.obraEscolhida=this.value;renderSide();">${OBRAS.map(o=>`<option value="${o.id}"${o.id===foco?' selected':''}>${o.nome}</option>`).join('')}</select>${icon('chevDown',14)}</div>
-      ${of?visoesObra().map(k=>vis(k, of.id, k==='hoje'?pendHoje(of).length:pend.filter(p=>p.tela===k).length, plan&&k!=='hoje')).join(''):''}
-    </nav>
-    ${paginas.map(page).join('')}
-    <button class="newbtn" onclick="openWizard(1)">${icon('plus')}Nova obra</button>
-    <div class="sec">Protótipo</div>
-    <a class="nav" href="#" role="switch" aria-checked="${document.body.classList.contains('notes')}" onclick="document.body.classList.toggle('notes');renderSide();return false">${icon('flask')}<span>Notas de validação</span><span class="toggle" aria-hidden="true"></span></a>
-    ${page({view:'fluxos', icon:'map', label:'Mapa de fluxos'})}
-    <div class="fict">${icon('info',14)}<span>Dados fictícios. Nenhum botão compra ou envia nada.</span></div>
-    <div class="foot"><div class="av">RZ</div><div>Rizzi<br><span>Construtora RZ · Admin</span></div></div>`;
+    <div class="perfil">
+      <div class="ca-menu-pop perfil-pop" id="perfilMenu" role="menu" aria-label="Perfil e protótipo" hidden></div>
+      <button type="button" class="foot" id="perfilBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="perfilMenu" onclick="menuPerfil()"><span class="av" aria-hidden="true">RZ</span><span class="foot-t">Rizzi<br><span>Construtora RZ · Admin</span></span>${icon('more',16)}</button>
+    </div>`;
 }
+function alternarGrupo(id, aberto){ CASCA.grupos[id]=!aberto; renderSide(); const b=$('side').querySelector(`[aria-controls="grp-${id}"]`); if(b) b.focus(); }
+/* Menu do perfil (rodapé da lateral): o que é do protótipo, fora do caminho do trabalho. */
+function menuPerfil(){
+  const notas=document.body.classList.contains('notes'), pg=v=>NAV_EXTRA.find(n=>n.view===v), campo=pg('campo'), nc=campo&&campo.count?campo.count():0;
+  abrirPop('perfilBtn', 'perfilMenu', `
+    <button type="button" role="menuitemcheckbox" aria-checked="${notas}" onclick="alternarNotas()">${icon('flask',15)}<span>Notas de validação</span><span class="toggle" aria-hidden="true"></span></button>
+    <button type="button" role="menuitem" onclick="fecharPop();go('campo')">${icon('phone',15)}<span>Celular do mestre</span>${nc?`<span class="n" aria-label="${nc} pendente">${nc}</span>`:''}</button>
+    <button type="button" role="menuitem" onclick="fecharPop();go('fluxos')">${icon('map',15)}<span>Mapa de fluxos</span></button>
+    <button type="button" role="menuitem" onclick="fecharPop();openWizard(1)">${icon('plus',15)}<span>Nova obra</span></button>
+    <p class="pop-nota">${icon('info',14)}<span>Dados fictícios. Nenhum botão compra ou envia nada.</span></p>`);
+}
+function alternarNotas(){ const on=document.body.classList.toggle('notes'); const b=$('perfilMenu').querySelector('[role=menuitemcheckbox]'); if(b) b.setAttribute('aria-checked', on); }
 
 /* ===================== HOME: CHAT GLOBAL ===================== */
 function aiMsg(tools, html){ return `<div class="msg ai"><div class="aiav">${icon('spark',20)}</div><div class="bub">${tools?`<div class="tools">${tools.map(t=>`<span>${icon('wrench',12)}${t}</span>`).join('')}</div>`:''}${html}</div></div>`; }
@@ -358,7 +443,7 @@ function tabHoje(o){
     ${listaDecisoes(linhas)}`;
 }
 /* Entre obras: as transferências desta obra (cedidas e recebidas), com a faixa do ciclo. */
-function tabEntreObras(o){ return `${cicloFaixa(o.id)}${estoqueCorpo(o.id, 3)}`; }
+function tabEntreObras(o){ return estoqueCorpo(o.id, 3); }
 
 /* Obra em orçamento (Galpão): só Hoje e o painel do agente; as outras telas esperam o orçamento fechar. */
 function emOrcamento(o){
@@ -394,9 +479,9 @@ function exigirPalete(){
 /* O antigo painel do agente virou a conversa do centro. PAINEL.aberto = a conversa está à vista (não está em
    tela cheia); abrirPainel leva de volta à conversa e foca o campo. CHATS segue como histórico das sessões da obra
    (usado pelo fallback da casca enquanto js/features/conversa.js não define SESSOES). */
-const PAINEL = { get aberto(){ return state.modo==='c' && !(state.visao && state.visao.cheia); } };
+const PAINEL = { get aberto(){ return state.modo==='c'; } };   // o agente está sempre a um clique: aba Conversa ou o campo da aba
 function manterRolagem(fn){ const m=$('main'), y=m.scrollTop; fn(); m.scrollTop=y; }
-function abrirPainel(focar){ if(state.modo!=='c') go(state.obra?'obra':'home', state.obra, 'chat'); else if(state.visao && state.visao.cheia) telaCheia(false); if(focar) focarCampo(); }
+function abrirPainel(focar){ if(state.modo!=='c') go(state.obra?'obra':'home', state.obra, 'chat'); else if(state.visao) fecharVisao(); if(focar) focarCampo(); }
 function fecharPainel(){ if(state.visao) fecharVisao(); }
 function alternarPainel(){ abrirPainel(true); }
 const CHATS = {
@@ -517,6 +602,7 @@ addCSS(`
 .sup-tab td:first-child:not(.ck),.sup-tab td.ck+td{min-width:200px}
 .sup-acao{width:1%;white-space:nowrap;text-align:right}
 .sup-acao .sm{margin-top:4px}
+.sup-acts{display:inline-flex;align-items:center;gap:6px} .sup-acts .sm{margin-top:0}
 .sup-tab .t-perda,.kc .t-perda,.sup-bloco .t-perda{color:var(--redInk);font-weight:600}
 .sup-tab .t-pede{color:var(--amberInk);font-weight:600}
 .sup-pe-bloco{display:flex;align-items:center;gap:var(--s3);padding:12px 20px;border-top:1px solid var(--line2);background:var(--sunk)}
@@ -565,11 +651,10 @@ addCSS(`
 .modal .sup-dconta{background:var(--sunk);border-color:var(--line2)}
 .sup-dh{font:600 var(--t-sec)/1.3 var(--serif);letter-spacing:-.01em;margin:var(--s5) 0 var(--s3)}
 .sup-nota-ag{margin:var(--s4) 0;font-size:var(--t-meta);padding:12px 16px}
-.sup-depois{margin:var(--s3) 0 0;color:var(--ink2)}
 .sup-pq{display:flex;gap:var(--s2);align-items:flex-start;margin:var(--s3) 0 0;color:var(--ink2);max-width:68ch}
 .sup-pq .ic{color:var(--pine);margin-top:3px}
 .sup-forn{padding:0}
-.sup-fl{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:var(--s3);align-items:center;padding:12px 16px;border-top:1px solid var(--line2)}
+.sup-fl{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--s3);align-items:center;padding:12px 16px;border-top:1px solid var(--line2)}
 .sup-fl:first-child{border-top:0}
 .sup-leg .row{margin:6px 0}
 .sup-leg i{width:9px;height:9px;border-radius:3px;flex:none}
@@ -709,12 +794,11 @@ function tabComp(o){
     const nota = b===m ? (s?`${brl(Math.round((s.p-b.p)*x.k.comprar))} a menos que o 2º`:'') : `${m.n.split(' ')[0]} é mais barata, mas demora mais`;
     return `${b.n}<div class="sm mut">${brl2(b.p)}/${x.c.un} · ${b.prazo}${nota?` · ${nota}`:''}</div>`; };
   const nomeCel = x => `<b>${x.c.nome}</b><div class="sm mut">${x.c.espec?x.c.espec+' · ':''}${x.c.fase}</div>`;
-  return `${cicloFaixa(o.id)}
-  ${val('O nível de detalhe do levantamento (quantidades vindas do projeto) bate com o que eles fazem hoje na planilha? Eles confiariam na quantidade estimada pelo agente, ou querem revisar item a item?')}
+  return `${val('O nível de detalhe do levantamento (quantidades vindas do projeto) bate com o que eles fazem hoje na planilha? Eles confiariam na quantidade estimada pelo agente, ou querem revisar item a item?')}
   ${f?avisoFiltro(f):''}
   <div class="sup-cab"><p class="sup-frase"><b>${falta.length?`${falta.length} ${falta.length>1?'insumos':'insumo'} para comprar · ${brl(totFalta)}`:'Nada para comprar agora'}</b>${pend.length?` · ${pend.length} ${pend.length>1?'cotações esperam':'cotação espera'} você`:''}</p>
     <span class="sm mut">${d.comp.length} de ${o.id==='vila-nova'?64:31} insumos do projeto · preços cotados hoje 07:40</span>
-    <button class="btn sm" onclick="toast('(protótipo) exportaria a lista em planilha')">${icon('download',14)}Exportar</button></div>
+    ${menuMais([{label:`${icon('download',15)}Exportar em planilha`, onclick:"toast('(protótipo) exportaria a lista em planilha')"}])}</div>
   ${!f&&cots.length?`<section class="sup-bloco"><h3 class="sup-h">Em cotação, esperando você <span class="mut">(${pend.length})</span></h3>
     <p class="sup-sub">Já estão descontados da falta: aprovar não gera compra em dobro.</p>${listaDecisoes(cots.map(cotLinha))}</section>`:''}
   <section class="sup-bloco"><h3 class="sup-h">Falta comprar <span class="mut">(${falta.length})</span></h3>
@@ -761,7 +845,7 @@ function conferirSimples(id){
 }
 /* Pedidos ligados ao mesmo insumo (atrasado ↔ plano B, resto da transferência). */
 const ligadosDe = (L, l) => l.inv ? L.filter(x=>x!==l && x.inv===l.inv && !x.conf) : [];
-function cartaoLote(l){
+function cartaoLote(l, op={}){
   const L=(acharLote(l.id)||{d:{lotes:[]}}).d.lotes, ab=abateNF(l), lig=ligadosDe(L,l);
   const pills=`${l.late?pill('perda','atrasado'):''}${l.trf?pill('caminho',icon('swap',12)+'transferência'):''}${l.ai?pill('info',icon('spark',12)+'sugerido'):''}${l.conf?pill('ok',icon('check',12)+'no almoxarifado'):''}`;
   return `<article class="kc${l.late?' late':''}${l.conf?' done':''}" data-doc="${l.id}" draggable="${!l.conf}" ondragstart="event.dataTransfer.setData('t','${l.id}')">
@@ -769,7 +853,7 @@ function cartaoLote(l){
     <b>${l.item}</b><div class="kc-q">${l.q} · ${l.forn}</div>
     <div class="kc-ef">${ab?`<span class="t-perda">abate ${brl(ab)}</span> · ${num(l.medido)} de ${num(l.qn)} ${l.un} medidos`:l.eta}</div>
     ${lig.length?`<div class="kc-lig">${icon('swap',12)}ligado a ${lig.map(x=>docRef(x.id)).join(', ')}</div>`:''}
-    <div class="kc-pe"><b class="kc-v">${brl(l.v)}</b>${botaoLote(l,{pri:false})}</div></article>`;
+    <div class="kc-pe"><b class="kc-v">${brl(l.v)}</b>${op.semAcao?'':botaoLote(l,{pri:false})}</div></article>`;
 }
 const ordemLotes = ls => [...ls].sort((a,b)=>(b.late?1:0)-(a.late?1:0));
 function tabKanban(o){
@@ -785,26 +869,24 @@ function tabKanban(o){
         conta:`${l.forn} · ${l.eta}${b?` · plano B: ${docRef(b.id)} em cotação`:''}`, valor:l.v,
         acao:{label:`Cobrar ${l.forn.split(' ')[0]}`, onclick:`cobrarLote('${l.id}')`}, sec:b?[{label:`Aprovar plano B ${brl(b.v)}`, onclick:`aprovarLote('${b.id}')`}]:[], foco:!nf.length}); }),
   ];
-  return `${cicloFaixa(o.id)}
-  ${val('Essas 5 etapas são as reais de um pedido? Falta "Pago"? Quem confere no recebimento é a mestre: conferir a NF pelo celular é viável no canteiro?')}
+  const noTopo=new Set([...nf, ...late]);
+  return `${val('Essas 5 etapas são as reais de um pedido? Falta "Pago"? Quem confere no recebimento é a mestre: conferir a NF pelo celular é viável no canteiro?')}
   ${f?avisoFiltro(f):''}
-  <div class="sup-cab"><p class="sup-frase"><b>Pedidos em aberto ${brl(aberto)}</b>${late.length?` · ${late.length} atrasado${late.length>1?'s':''}`:''}${nf.length?` · ${nf.length} para conferir`:''}</p></div>
+  <div class="sup-cab"><p class="sup-frase"><b>Pedidos em aberto ${brl(aberto)}</b></p></div>
   ${!f&&urg.length?`<section class="sup-bloco"><h3 class="sup-h">Pede você agora</h3>${listaDecisoes(urg)}</section>`:''}
   <div class="kb5 sup-kb" style="grid-template-columns:repeat(${cols.length},minmax(0,1fr))">${cols.map(i=>{ const ls=ordemLotes(L.filter(l=>l.col===i&&!l.conf)), hist=i===ult?conf:[];
     return `<section class="col" ondragover="event.preventDefault()" ondrop="dropLote(event,${i})" aria-labelledby="kbc${i}"><h3 id="kbc${i}">${i===ult?'Conferir NF':KCOLS[i]}<small>${ls.length} · ${brl(ls.reduce((a,l)=>a+l.v,0))}</small></h3>
-      ${ls.map(cartaoLote).join('')||'<p class="kb-vazio">nenhum pedido</p>'}
-      ${hist.length?`<details class="kb-hist"><summary>${icon('chevRight',13,'chev')}${hist.length} conferido${hist.length>1?'s':''} · no almoxarifado</summary>${hist.map(cartaoLote).join('')}</details>`:''}</section>`; }).join('')}</div>`;
+      ${ls.map(l=>cartaoLote(l,{semAcao:!f&&noTopo.has(l)})).join('')||'<p class="kb-vazio">nenhum pedido</p>'}
+      ${hist.length?`<details class="kb-hist"><summary>${icon('chevRight',13,'chev')}${hist.length} conferido${hist.length>1?'s':''} · no almoxarifado</summary>${hist.map(l=>cartaoLote(l)).join('')}</details>`:''}</section>`; }).join('')}</div>`;
 }
 
 /* ===================== ALMOXARIFADO ===================== */
 function tabInv(o){
   const d=dados(o.id), inv=d.inv, f=filtroSup(), ult=ULT();
   const its=inv.map(i=>({i, k:contaDe(o.id,i.id), a:acoesItem(o.id,i.id), dias:duraDias(i)}));
-  const acabam=its.filter(x=>x.dias!=null&&x.dias<=7).sort((a,b)=>a.dias-b.dias);       // erro 2: pela duração, não por st
   const trab=its.filter(x=>x.a.length||(x.dias!=null&&x.dias<=7)).sort((a,b)=>porDias(a.dias,b.dias)), cob=its.filter(x=>!trab.includes(x));
   const sobras=TRANSF.filter(t=>t.origem===o.id&&t.sug>0), nf=d.lotes.filter(l=>l.col===ult&&!l.conf), quebra=inv.find(i=>i.quebra);
   const pal=quebra&&d.lotes.find(l=>l.inv===quebra.id&&!l.conf&&l.palete!==undefined);
-  const nomeCurto = i => i.nome.split(' ')[0];
   const durTxt = x => x.dias==null?`<span class="mut">${x.i.cob}</span>`:`<span class="${x.dias<=2?'t-perda':x.dias<=7?'t-pede':''}">${x.i.cob}</span>`;
   const alertas=[
     ...nf.map((l,k)=>{ const ab=abateNF(l); return linhaDecisao({prazo:/hoje/.test(l.eta)?'chegou hoje':'na obra', tom:'pede', titulo:`Conferir NF do ${docRef(l.id)} · ${l.item}`,
@@ -815,22 +897,21 @@ function tabInv(o){
         conta:`${num(qb)} ${quebra.un} quebrados · a entrega anterior veio sem palete · a próxima é o ${docRef(pal.id)}`, valor:'',
         acao:{label:`Exigir palete no ${pal.id}`, onclick:'exigirPalete()'}, foco:!nf.length, estado:pal.palete?{feito:'Palete exigido'}:'pendente'}); })()]:[]),
   ];
-  const linha = x => { const a=x.a[0];
+  const noTopo=new Set([...nf.map(l=>l.id), ...(pal&&!pal.palete?[pal.id]:[])]);          // o que já está em "Pede você agora" não repete na tabela
+  const linha = x => { const as=x.a.filter(y=>!(y.doc&&noTopo.has(y.doc))), a=as[0];
     return `<tr class="click" onclick="openInvItem('${x.i.id}','${o.id}')"><td><b>${x.i.nome}</b> <span class="curva c${x.i.abc}" title="curva ${x.i.abc}" aria-label="curva ${x.i.abc}">${x.i.abc}</span><div class="sm mut">${x.i.obs||(x.i.abc==='C'?`contagem semanal · ${x.i.contagem||'—'}`:x.a.slice(1).map(y=>y.txt).join(' · ')||'baixa com destino')}</div></td>
       <td class="sm">${durTxt(x)}</td><td>${linhaConta(x.k)}</td>
-      <td class="sup-acao">${a?`<button type="button" class="btn sm" onclick="event.stopPropagation();${a.onclick}">${a.label}</button>${x.a[1]?`<div class="sm mut">depois: ${x.a[1].txt}</div>`:''}`:''}</td></tr>`; };
+      <td class="sup-acao"><span class="sup-acts" onclick="event.stopPropagation()">${a?botao(a.label, a.onclick, {sm:true}):''}${menuMais(as.slice(1))}</span></td></tr>`; };
   const cab = `<thead><tr><th>Item</th><th>Dura</th><th>Conta</th><th><span class="sr-only">Ação</span></th></tr></thead>`;
-  return `${cicloFaixa(o.id)}
-  ${val('Quem dá baixa no material no dia a dia é a mestre, pelo WhatsApp. Registrar "para onde foi" só nos itens curva A (aço, concreto, bloco, cimento, porcelanato) e contar o resto toda semana é viável no canteiro?')}
+  return `${val('Quem dá baixa no material no dia a dia é a mestre, pelo WhatsApp. Registrar "para onde foi" só nos itens curva A (aço, concreto, bloco, cimento, porcelanato) e contar o resto toda semana é viável no canteiro?')}
   ${f?avisoFiltro(f):''}
-  <div class="grid g3 sup-kpis">
-    ${kpi({rotulo:'Acabam em ≤ 7 dias', valor:acabam.length, tom:acabam.length?'perda':undefined, contexto:acabam.map(x=>`${nomeCurto(x.i)} ${/\d\/\d/.test(x.i.cob)?'até '+x.i.cob.match(/\d{1,2}\/\d{1,2}/)[0]:x.dias<=0?'acabou':'≈ '+x.dias+' d'}`).join(' · ')||'nenhum'})}
+  <div class="grid g2 sup-kpis">
     ${kpi({rotulo:'Sobra para outras obras', valor:sobras.length, contexto:sobras.map(t=>`${num(t.sug)} ${t.un} de ${t.item.split(' ')[0].toLowerCase()} → ${curtaObra(t.destino)}`).join(' · ')||'nada sobrando agora'})}
     ${kpi({rotulo:'Em estoque', valor:brl(d.valorEstoque), contexto:`${d.itensAlmox} itens · a preço de compra`})}
   </div>
   ${alertas.length?`<section class="sup-bloco"><h3 class="sup-h">Pede você agora</h3>${listaDecisoes(alertas)}</section>`:''}
   <section class="sup-bloco"><div class="sup-cab"><h3 class="sup-h">Vai acabar ou pede ação <span class="mut">(${trab.length})</span></h3><span class="sp"></span>
-    <span class="sm mut">a mestre registra as saídas pelo WhatsApp</span><button class="btn sm" onclick="openBaixa()">${icon('minus',14)}Registrar saída</button></div>
+    <span class="sm mut">a mestre registra as saídas pelo WhatsApp</span>${menuMais([{label:`${icon('minus',15)}Registrar saída daqui`, onclick:'openBaixa()'}])}</div>
     <div class="card sup-tab" style="padding:0"><table>${cab}<tbody>${trab.map(linha).join('')||'<tr><td colspan="4" class="mut">Nada acaba nos próximos 7 dias e nada pede você.</td></tr>'}</tbody></table></div></section>
   ${cob.length?`<details class="sup-cob"><summary>${icon('chevRight',14,'chev')}Cobertos <span class="mut">(${cob.length})</span><span class="sm mut">· o estoque e o que está a caminho cobrem até o fim</span></summary>
     <div class="card sup-tab" style="padding:0"><table>${cab}<tbody>${cob.map(linha).join('')}</tbody></table></div></details>`:''}
@@ -872,9 +953,8 @@ function tabPrazos(o){
   const TELA_CAUSA={Fornecedor:'kanban', Equipe:'equipe', Clima:'diario'};
   return `${val('A explicação do atraso por causa (fornecedor, equipe, clima) é o que o dono da obra cobra? Quais causas faltam (projeto, aprovação na prefeitura, pagamento)?')}
   ${plano}
-  <div class="grid g3 g-kpis" style="margin:0 0 var(--s5)">
-    ${kpi({rotulo:'Prazo contratado', valor:o.prazo, contexto:`início ${o.inicio}`})}
-    ${kpi({rotulo:'Previsão do agente', valor:o.previsao, contexto:prazoTxt(o), tom:atrasa?'perda':'ok'})}
+  <div class="grid g2 g-kpis" style="margin:0 0 var(--s5)">
+    ${kpi({rotulo:'Previsão do agente', valor:o.previsao, contexto:`${prazoTxt(o)} · contrato ${o.prazo}, início ${o.inicio}`, tom:atrasa?'perda':'ok'})}
     ${kpi({rotulo:'Fase atual', valor:P.faseAtual, contexto:`${P.fasePct}% · ${P.faseObs}`})}
   </div>
   <div class="card"><h3>Cronograma por fase</h3>
@@ -888,7 +968,7 @@ function tabPrazos(o){
   <div class="card" style="margin-top:var(--s5)"><h3>O estoque aguenta até o fim?</h3>
     <table class="sm"><tr><th>Item</th><th class="num">Tem</th><th class="num">A caminho</th><th class="num">Precisa</th><th class="num">Falta</th><th>O que fazer</th></tr>
     ${linhas.map(r=>`<tr><td><b>${r.nome.split(' (')[0]}</b></td><td class="num">${num(r.tem)}</td><td class="num">${r.cam?num(r.cam):'—'}</td><td class="num">${num(r.nec)}</td><td class="num">${r.falta>0?`<b>${num(r.falta)}</b>`:'0'}</td><td>${r.acao}</td></tr>`).join('')}</table>
-    <div class="row" style="margin-top:14px;flex-wrap:wrap"><span class="sm mut">Falta = precisa − tem − a caminho. Nada do que já está pedido entra na sugestão.</span><span class="sp"></span>${botao('Ver pedidos sugeridos',`go('obra','${o.id}','kanban')`)}</div></div>`;
+    <div class="row" style="margin-top:14px;flex-wrap:wrap"><span class="sm mut">Falta = precisa − tem − a caminho. Nada do que já está pedido entra na sugestão.</span><span class="sp"></span><a class="link" href="#" onclick="go('obra','${o.id}','kanban');return false">Ver pedidos sugeridos ${icon('arrowRight',13)}</a></div></div>`;
 }
 
 /* ===================== DRAWERS / MODAIS ===================== */
@@ -932,7 +1012,7 @@ document.addEventListener('keydown', e=>{
     else if(!e.shiftKey && at===z){ e.preventDefault(); a.focus(); }
     return;
   }
-  if(e.key==='/' && !topo && state.modo==='c' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) && !document.activeElement.isContentEditable){ e.preventDefault(); if(state.visao&&state.visao.cheia) telaCheia(false); focarCampo('/'); }
+  if(e.key==='/' && !topo && state.modo==='c' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) && !document.activeElement.isContentEditable){ e.preventDefault(); if(state.visao) fecharVisao(); focarCampo('/'); }
 });
 /* Drawers de Suprimentos: cabeçalho com a linha de conta, corpo e rodapé de ação fixo (.sup-pe). */
 function cabDrawer(rotulo, titulo, sub, conta){
@@ -943,17 +1023,18 @@ function openComp(id){
   const c=insumo(id); if(!c) return toast('Insumo não encontrado');
   const ob=Object.keys(DADOS).find(k=>DADOS[k].comp.includes(c)), inv=c.inv||c.id, k=contaDe(ob,inv), rec=fornRec(ob,c);
   const fs=[rec, ...[...c.forn].sort((a,b)=>a.p-b.p).filter(f=>f!==rec)], q=k.comprar>0?k.comprar:(k.cot?k.cot.qn:0), m=best(c);
-  const pe = k.comprar>0 ? `${botao('Ver no almoxarifado', `closeDrawer();go('obra','${ob}','inventario')`, {})}<span class="sp"></span>${botao(`Pedir ${num(k.comprar)} ${c.un} · ${brl(rec.p*k.comprar)}`, `openCheckout(['${c.id}'],{forn:'${esc(rec.n)}',obra:'${ob}'})`, {pri:true, icone:'cart'})}`
-    : k.cot ? `${pill('pede',`${k.cot.id} em cotação`)}<span class="sp"></span>${botao(`Aprovar ${k.cot.id} · ${brl(k.cot.v)}`, `aprovarLote('${k.cot.id}');openComp('${c.id}')`, {pri:true})}`
-    : `${pill('ok','nada a comprar agora')}<span class="sp"></span>${botao('Ver no almoxarifado', `closeDrawer();go('obra','${ob}','inventario')`, {})}`;
+  const mais = menuMais([{label:'Ver no almoxarifado', onclick:`closeDrawer();go('obra','${ob}','inventario')`},
+    ...fs.map(f=>({label:`${icon('message',15)}WhatsApp · ${f.n}`, onclick:"toast('(protótipo) abriria o WhatsApp do fornecedor')"}))]);
+  const pe = k.comprar>0 ? `${mais}<span class="sp"></span>${botao(`Pedir ${num(k.comprar)} ${c.un} · ${brl(rec.p*k.comprar)}`, `openCheckout(['${c.id}'],{forn:'${esc(rec.n)}',obra:'${ob}'})`, {pri:true, icone:'cart'})}`
+    : k.cot ? `${pill('pede',`${k.cot.id} em cotação`)}${mais}<span class="sp"></span>${botao(`Aprovar ${k.cot.id} · ${brl(k.cot.v)}`, `aprovarLote('${k.cot.id}');openComp('${c.id}')`, {pri:true})}`
+    : `${pill('ok','nada a comprar agora')}<span class="sp"></span>${mais}`;
   $('drawerPane').innerHTML = `${cabDrawer(`Insumo · ${NOME_OBRA[ob]}`, c.nome, `${c.espec?c.espec+' · ':''}${c.fase} · projeto: ${num(c.qtd)} ${c.un} na obra inteira`,
       linhaConta({...k, fonte:k.cot?`${k.cot.id} em cotação já descontado`:k.tr?`${num(k.transf)} ${c.un} vêm da ${NOME_OBRA[k.tr.origem]}`:''}))}
     <div class="card agentnote inline sup-nota-ag">${icon('spark',15)}<div><b>Como estimei:</b> quantidade tirada do memorial descritivo e das plantas, com a perda média do mercado para este insumo. <a href="#" class="link" onclick="toast('(protótipo) abriria o trecho do projeto');return false">ver no projeto</a></div></div>
     <h3 class="sup-dh">Onde comprar · ${fs.length} fornecedores na região</h3>
     <div class="card sup-forn">${fs.map((f,i)=>`<div class="sup-fl"><div class="sup-fn"><b>${f.n}</b> ${i===0?pill('ok',f===m?'melhor preço':'recomendado'):''}
         <div class="sm mut">${f.cid} · ${f.prazo} · nota ${String(f.nota).replace('.',',')}${i===0&&f!==m?` · ${m.n.split(' ')[0]} é mais barata, mas demora mais`:''}</div></div>
-      <div class="num"><b>${brl2(f.p)}</b><span class="sm mut">/${c.un}</span>${q?`<div class="sm mut">${num(q)} ${c.un}: ${brl(f.p*q)}</div>`:''}</div>
-      <button class="iconbtn" aria-label="Falar com ${esc(f.n)} no WhatsApp" title="Contato" onclick="toast('(protótipo) abriria o WhatsApp do fornecedor')">${icon('message',16)}</button></div>`).join('')}</div>
+      <div class="num"><b>${brl2(f.p)}</b><span class="sm mut">/${c.un}</span>${q?`<div class="sm mut">${num(q)} ${c.un}: ${brl(f.p*q)}</div>`:''}</div></div>`).join('')}</div>
     <p class="sm mut">${chipFonte({origem:'cotacao', quem:'sites, catálogos e WhatsApp', hora:'hoje 07:40'})} · validade de 48 h</p>
     <div class="sup-pe">${pe}</div>`;
   $('drawer').classList.add('on');
@@ -968,11 +1049,11 @@ function openInvItem(id, obraId){
   const pal=i.quebra && d.lotes.find(l=>l.inv===i.id&&!l.conf&&l.palete!==undefined);
   closeModal();
   const fica=!/openTransfer|openCheckout|conferirLote|go\(/.test((ac[0]||{}).onclick||'');      // ação que não sai do drawer: redesenha no lugar
-  const pe = `${botao(C?'Registrar contagem ou saída':'Registrar saída', `openBaixa('${i.id}')`, {icone:'minus'})}<span class="sp"></span>`+
-    (ac[0] ? botao(ac[0].label, `${ac[0].onclick}${fica?`;openInvItem('${i.id}','${ob}')`:''}`, {pri:true}) : pill('ok','estoque cobre até o fim'));
+  const baixa = {label:C?'Registrar contagem ou saída':'Registrar saída', onclick:`openBaixa('${i.id}')`};
+  const pe = ac[0] ? `${menuMais([...ac.slice(1), baixa])}<span class="sp"></span>${botao(ac[0].label, `${ac[0].onclick}${fica?`;openInvItem('${i.id}','${ob}')`:''}`, {pri:true})}`
+    : `${pill('ok','estoque cobre até o fim')}<span class="sp"></span>${botao(baixa.label, baixa.onclick, {icone:'minus'})}`;
   $('drawerPane').innerHTML = `${cabDrawer(`Almoxarifado · ${NOME_OBRA[ob]}`, `${i.nome} <span class="curva c${i.abc}" aria-label="curva ${i.abc}">${i.abc}</span>`,
       `entraram ${num(i.ent)} · saíram ${num(i.sai)} ${i.un} · dura ${i.cob}`, linhaConta({...k, fonte:k.cot?`${k.cot.id} em cotação já descontado`:''}))}
-    ${ac.length>1?`<p class="sm sup-depois">Também pede você: ${ac.slice(1).map(a=>a.doc?a.txt.replace(a.doc,docRef(a.doc)):a.txt).join(' · ')}</p>`:''}
     ${C?`<div class="card inline sup-nota-ag" style="background:var(--sunk)">${icon('info',15)}<div><b>Curva C: controle por contagem semanal, sem destino.</b> Item barato e de uso espalhado; registrar para onde vai cada unidade vira burocracia. Última contagem: ${i.contagem||'—'}, ${num(s)} ${i.un}.</div></div>`
       :`<h3 class="sup-dh">Para onde foi</h3>
     <div class="split" style="height:16px;margin-bottom:12px;border-radius:6px" role="img" aria-label="${num(usados)} usados, ${num(quebras)} quebrados, ${num(Math.max(0,s))} no almoxarifado">${saidas.map(m=>`<div style="width:${-m.q/i.ent*100}%;background:${cor(m)}" title="${esc(m.onde)}"></div>`).join('')}<div style="width:${Math.max(0,s)/i.ent*100}%;background:var(--line)"></div></div>
@@ -1054,7 +1135,7 @@ function estoqueCorpo(ob, h){
   recalcTransf();
   const H=`h${h}`, ativas=TRANSF.filter(t=>t.sug>0&&(!ob||t.origem===ob||t.destino===ob)), vence=ativas.filter(t=>t.perda);
   const hist=TRF_HIST.filter(x=>!ob||x.de===ob||x.para===ob), pedidas=hist.filter(x=>x.st!=='Recebida'), feitas=hist.filter(x=>x.st==='Recebida');
-  const eco=ativas.reduce((a,t)=>a+t.sug*(t.novo-t.custo),0), dias=Math.max(0,...ativas.map(t=>t.dias||0));
+  const eco=ativas.reduce((a,t)=>a+t.sug*(t.novo-t.custo),0);
   const saldoObra=id=>TRF_HIST.reduce((a,x)=>a+(x.de===id?x.v:0)-(x.para===id?x.v:0),0);
   const verbo=t=>ob&&t.origem===ob?'Ceder':'Trazer';
   const sug=t=>`<div class="trf-l">
@@ -1064,9 +1145,8 @@ function estoqueCorpo(ob, h){
       <div>${botao(`${verbo(t)} ${num(t.sug)} ${t.un}`, `openTransfer('${t.inv}')`, {sm:true, pri:t===ativas[0], icone:'swap'})}</div></div>`;
   const histTab=xs=>`<table class="sm"><thead><tr><th>Nº</th><th>Data</th><th>Item</th><th>De → para</th><th class="num">Valor (custo)</th><th>Situação</th></tr></thead><tbody>
     ${xs.map(x=>`<tr data-doc="${x.id}"><td>${docRef(x.id)}</td><td>${x.d}</td><td>${x.item} · ${x.q}</td><td>${curtaObra(x.de)} → ${curtaObra(x.para)}</td><td class="num">${brl2(x.v)}</td><td>${pill(x.st==='Recebida'?'ok':'caminho',x.st)}</td></tr>`).join('')}</tbody></table>`;
-  return `<div class="grid g3 sup-kpis">
+  return `<div class="grid g2 sup-kpis">
       ${kpi({rotulo:'Compra evitada', projecao:true, valor:brl(ativas.reduce((a,t)=>a+t.sug*t.novo,0)), contexto:ativas.length?`a preço novo · ${brl2(eco)} a menos pagando o custo`:'nenhuma sugestão pendente'})}
-      ${kpi({rotulo:'Dias ganhos', projecao:true, valor:dias?`até ${dias} dias`:'—', contexto:ativas.length?`chega hoje; comprando, levaria de ${Math.min(...ativas.map(t=>t.dias))} a ${dias} dias`:'—'})}
       ${kpi({rotulo:'Deixa de vencer', projecao:true, valor:vence.length?vence.map(t=>`${num(t.sug)} ${t.un}`).join(' + '):'—', contexto:vence.map(t=>`${nomeItem(t)} da ${curtaObra(t.origem)}, vence em 25 dias`).join('; ')||'nada vencendo'})}
     </div>
     <section class="sup-bloco"><${H} class="sup-h">Transferências sugeridas <span class="mut">(${ativas.length})</span></${H}>
@@ -1083,7 +1163,7 @@ function estoqueCorpo(ob, h){
 }
 function renderEstoque(){
   return `<div class="top"><h1>Estoque entre obras</h1><span class="crumb">o que sobra numa obra e falta em outra · sempre a preço de custo</span></div>
-  <div class="page">${cicloFaixa(null)}
+  <div class="page">
     ${val('Ele já faz isso hoje, "no braço", entre obras? Com que frequência? Quem autoriza a saída da obra de origem: o mestre dela, o gerente ou o dono? E quando as obras são de clientes diferentes (o material é do cliente), ainda pode?')}
     ${estoqueCorpo(null, 2)}</div>`;
 }
@@ -1169,41 +1249,48 @@ function addCSS(css){ const s=document.createElement('style'); s.textContent=css
 function render(){
   compat(state);
   if(state.modo==='c') CASCA.ultima=state.sessao;
+  fecharPop();
   renderSide();
-  const app=document.querySelector('.app'), m=$('main');
-  app.classList.toggle('side-aberta', !!CASCA.side);
+  const app=document.querySelector('.app'), m=$('main'), top=$('sesTop'), vs=$('visao');
+  app.classList.toggle('em-pagina', state.modo!=='c');
   if(state.modo!=='c'){
-    app.classList.remove('com-visao','vs-cheia');
+    top.hidden=true; top.innerHTML=''; m.hidden=false;
     m.className='main'; m.innerHTML=(VIEWS[state.modo]||VIEWS.fluxos)(); m.scrollTop=0;
-    const vs=$('visao'); vs.hidden=true; vs.innerHTML=''; vs.dataset.k='';
-  } else { desenharConversa(); desenharVisao(); }
+    vs.hidden=true; vs.innerHTML=''; vs.dataset.k='';
+  } else {
+    desenharTopo();
+    if(state.visao){ guardarRolagem(); m.hidden=true; desenharVisao(); }      // uma coisa por vez: a aba ativa ocupa a área toda
+    else { vs.hidden=true; m.hidden=false; desenharConversa(); }
+  }
   document.dispatchEvent(new Event('rendered'));
 }
 
-/* ===================== CASCA: AGENTE NO CENTRO =====================
-   Esquerda: conversas (Geral + sessões por obra) e visões · centro: a conversa · direita: a visão aberta.
-   API para js/features/conversa.js (contrato "Agente no centro"):
+/* ===================== CASCA: SESSÃO COM ABAS =====================
+   Esquerda: só conversas (Geral + sessões agrupadas por obra) · topo: o título da sessão (com o escopo) e a barra de
+   abas · área: a aba ativa, uma coisa por vez. A aba "Conversa" é fixa; as outras são as telas abertas nesta sessão
+   (sessao.abas), com × para fechar. A aba só abre quando você pede: o "Abrir…" de um cartão, o "+", um PED-…, um
+   /atalho. O agente nunca abre aba sozinho (msg.abrir é ignorado).
+   API para js/features/conversa.js (contrato "Sessão com abas"):
      SESSOES (da Conversa) · renderConversa(sessao) → html das mensagens · renderMsg(msg) → html de uma mensagem
      responder(texto, sessao) → Promise<msg[]>  (a casca já empurrou {de:'voce', html} em sessao.msgs e põe as
        respostas em seguida; sessao.escopoMsg = obraId do @obra, ou null; sessao.contexto = {chave, obra, filtro}
-       quando a pergunta veio de "Perguntar sobre isto")
-     abrirVisao(chave, obraId, {filtro, cheia}) · fecharVisao() · telaCheia(on) · perguntarSobre(chave, obraId, filtro)
-     trocarEscopo(sessaoId, escopo) · novaSessao(escopo, titulo) → id · abrirSessao(id) · sessaoAtual()
+       quando a pergunta veio de uma aba ("Perguntar ao agente sobre isto…" ou perguntarSobre))
+     abrirVisao(chave, obraId, {filtro}) → abre/ativa a aba · fecharVisao() → volta à aba Conversa · telaCheia() no-op
+     perguntarSobre(chave, obraId, filtro) → aba Conversa com o contexto e a semente no campo
+     trocarEscopo(sessaoId, escopo) · novaSessao(escopo, titulo) → id · abrirSessao(id) (abre na aba Conversa) · sessaoAtual()
      SUGESTOES (opcional, da Conversa): array de textos ou função(sessao) → array; são os chips acima do campo.
-     msg.abrir = {chave, obra, filtro} (opcional): a casca abre essa visão quando a mensagem chega.
    Enquanto a Conversa não define SESSOES/renderConversa/responder, um fallback simples (CHATS + briefing) segura a casca. */
-const CASCA = {ultima:null, obraFoco:null, obraEscolhida:null, side:false, focar:false, ctx:null, pensando:false, rascunho:''};
-ICONS.maximize = ICONS.maximize || '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/>';
-ICONS.minimize = ICONS.minimize || '<path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="m14 10 7-7"/><path d="m3 21 7-7"/>';
-ICONS.panel = ICONS.panel || '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/>';
+const CASCA = {ultima:null, obraFoco:null, side:false, focar:false, ctx:null, pensando:false, rascunho:'', grupos:{}, rolagem:null};
 ICONS.book = ICONS.book || '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/>';
 
-const VISAO_ROT = {hoje:'Hoje', componentes:'Falta comprar', kanban:'Pedidos', inventario:'Almoxarifado', entreobras:'Entre obras', overview:'Orçamento', medicoes:'Medições', prazos:'Cronograma', diario:'Diário', equipe:'Equipe', aprovacoes:'Aprovações', estoque:'Estoque entre obras', hub:'Todas as obras'};
+const VISAO_ROT = {hoje:'Hoje', componentes:'Falta comprar', kanban:'Pedidos', inventario:'Almoxarifado', entreobras:'Entre obras', overview:'Orçamento', medicoes:'Medições', prazos:'Cronograma', diario:'Diário', equipe:'Equipe', aprovacoes:'Pendências', estoque:'Entre obras · todas', hub:'Todas as obras'};
 const VISAO_IC = {hoje:'checkCircle', componentes:'bricks', kanban:'package', inventario:'archive', entreobras:'swap', overview:'chart', medicoes:'ruler', prazos:'clock', diario:'book', equipe:'users', aprovacoes:'checkCircle', estoque:'swap', hub:'building'};
 const VISAO_ALIAS = {hoje:'pendencias resumo', componentes:'comprar compras insumos falta', kanban:'pedidos compras entregas chega', inventario:'almoxarifado estoque saldo', entreobras:'transferencia sobra', overview:'orcamento custos verba', medicoes:'medicao empreiteiro pagamento', prazos:'cronograma prazo atraso', diario:'diario rdo', equipe:'equipe pessoal aso', aprovacoes:'aprovacoes pendencias propostas', estoque:'estoque entre obras transferencia', hub:'obras todas'};
 const ORDEM_VISOES = ['hoje','componentes','kanban','inventario','overview','medicoes','prazos','diario','equipe'];
 const visoesObra = () => [...ORDEM_VISOES.filter(k=>TAB_FNS[k]), ...Object.keys(TAB_FNS).filter(k=>!ORDEM_VISOES.includes(k) && k!=='entreobras')];
 const visoesGlobais = () => ['aprovacoes','estoque','hub'].filter(ehVisaoGlobal).concat(Object.keys(VIEWS).filter(k=>ehVisaoGlobal(k) && !['aprovacoes','estoque','hub'].includes(k)));
+/* O "+": o único menu de telas. Lista curta, agrupada; na Geral, as globais vêm antes e as da obra pedem a obra. */
+const MENU_ABAS = [['Suprimentos',['componentes','kanban','inventario','entreobras']], ['Custos',['overview','medicoes']], ['Execução',['prazos','diario','equipe']]];
 function rotuloVisao(k){ if(VISAO_ROT[k]) return VISAO_ROT[k]; const g=GRUPOS.flatMap(x=>x.telas).find(t=>t[0]===k), t=TABS.find(t=>t[0]===k); return (g&&g[1])||(t&&t[2])||k; }
 const semAcento = t => String(t).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
 const nomeObra = id => (OBRAS.find(o=>o.id===id)||{}).nome || id;
@@ -1223,57 +1310,66 @@ function sessaoDaObra(obraId){ const x=sessoes().find(s=>s.escopo===obraId); ret
 function escopoAtual(){ const s=sessaoAtual(); return s.escopo || 'geral'; }
 function obraPadrao(sesId){ const s=sessoes().find(x=>x.id===sesId); return s && s.escopo && s.escopo!=='geral' ? s.escopo : CASCA.obraFoco || OBRAS[0].id; }
 function obraFoco(){
-  if(CASCA.obraEscolhida && OBRAS.some(o=>o.id===CASCA.obraEscolhida)) return CASCA.obraEscolhida;
   const v=state.visao; if(v && v.obra) return v.obra;
   const e=state.modo==='c' && escopoAtual(); return e && e!=='geral' ? e : (CASCA.obraFoco && OBRAS.some(o=>o.id===CASCA.obraFoco) ? CASCA.obraFoco : OBRAS[0].id);
 }
 function criarSessao(escopo, titulo){
   const id='s'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
-  sessoes().unshift({id, titulo: titulo || (escopo&&escopo!=='geral' ? `Nova conversa · ${curtaObra(escopo)}` : 'Nova conversa'), escopo: escopo||'geral', quando:'agora', msgs:[]});
+  sessoes().unshift({id, titulo: titulo || 'Nova conversa', escopo: escopo||'geral', quando:'agora', msgs:[], abas:[]});
   return id;
+}
+/* Título da sessão com o escopo: "Casa Vila Nova · Atraso do aço" · "Geral · todas as obras". */
+function tituloSessao(s){
+  const o=s.escopo && s.escopo!=='geral' && OBRAS.find(x=>x.id===s.escopo), t=String(s.titulo||'').replace(/^Geral( · )?/,'');
+  return {onde: o ? o.nome : 'Geral', nome: t || (o ? 'Conversa' : 'todas as obras'), o};
 }
 
 /* ---------- API pública ---------- */
-function abrirSessao(id){ state=compat({modo:'c', sessao:id, visao:state.modo==='c'?state.visao:null}); CASCA.obraEscolhida=null; navegar(); }
+function abrirSessao(id){ state=estadoSessao(id, null); navegar(); }
 function novaSessao(escopo, titulo){
   const id=criarSessao(escopo, titulo);
-  state=compat({modo:'c', sessao:id, visao:state.modo==='c'?state.visao:null}); CASCA.obraEscolhida=null; CASCA.side=false;
+  state=estadoSessao(id, null); CASCA.side=false;
   history.pushState(null,'',hashDe(state));
   queueMicrotask(()=>{ render(); focarCampo(); });            // quem chamou pode pôr mensagens na sessão antes de desenhar
   return id;
 }
 function trocarEscopo(sessaoId, escopo){
   const s=sessoes().find(x=>x.id===sessaoId); if(!s) return null;
-  s.escopo = escopo || 'geral'; CASCA.obraEscolhida=null;
+  s.escopo = escopo || 'geral';
   if(state.sessao===sessaoId && state.modo==='c') render(); else renderSide();
   return s;
 }
 function abrirVisao(chave, obraId, op={}){
-  const va=state.visao, cheia = op.cheia ?? !!(va && va.cheia), ses = state.modo==='c' ? state.sessao : (CASCA.ultima||idGeral());
-  let visao;
-  if(ehVisaoObra(chave)) visao={chave, obra: OBRAS.some(o=>o.id===obraId) ? obraId : obraPadrao(ses), filtro:op.filtro||null, cheia};
-  else if(ehVisaoGlobal(chave)) visao={chave, obra:null, filtro:op.filtro||null, cheia};
-  else return toast('Essa visão não existe neste protótipo');
-  const mesma = va && va.chave===visao.chave && va.obra===visao.obra;
-  if(mesma && !('filtro' in op)) visao.filtro=va.filtro;
-  CASCA.obraEscolhida=null;
-  state=compat({modo:'c', sessao:ses, visao}); navegar(mesma);
+  const ses = state.modo==='c' ? state.sessao : (CASCA.ultima||idGeral()), aba=normAba(chave, obraId, ses, op.filtro);
+  if(!aba) return toast('Essa tela não existe neste protótipo');
+  const mesma = !!state.visao && state.sessao===ses && chaveAba(state.visao)===chaveAba(aba);
+  state=estadoSessao(ses, aba, 'filtro' in op ? op.filtro||null : undefined); navegar(mesma);
 }
 function fecharVisao(){
   if(!state.visao) return;
-  state=compat({...state, visao:null}); navegar();
+  state=estadoSessao(state.sessao, null); navegar();
   focarCampo();
 }
-function telaCheia(on){
-  const v=state.visao; if(!v) return;
-  on = on===undefined ? !v.cheia : !!on; if(on===v.cheia) return;
-  state=compat({...state, visao:{...v, cheia:on}}); navegar(true);
-  const b=document.querySelector(on?'.vs-volta':'.vs-cheia-btn'); if(b) b.focus({preventScroll:true});
+function telaCheia(){}                                           // não há mais tela cheia: a aba já ocupa a área toda
+function ativarAba(k){
+  const s=sessaoAtual(), a=abasDe(s).find(x=>chaveAba(x)===k);
+  if(k==='conversa' || !a) return fecharVisao();
+  if(state.visao===a) return;
+  state=estadoSessao(s.id, a); navegar();
+  focarAba(k);
 }
+function fecharAba(k){
+  const s=sessaoAtual(), L=abasDe(s), i=L.findIndex(x=>chaveAba(x)===k); if(i<0) return;
+  const ativa = state.visao && chaveAba(state.visao)===k;
+  L.splice(i,1);
+  if(ativa){ state=estadoSessao(s.id, null); navegar(true); } else render();
+  const prox=L[Math.min(i, L.length-1)];
+  focarAba(ativa||!prox ? 'conversa' : chaveAba(prox));
+}
+function focarAba(k){ const b=$('sesTop').querySelector(`[role=tab][data-k="${k}"]`); if(b) b.focus({preventScroll:true}); }
 function perguntarSobre(chave, obraId, filtro){
   const v=state.visao||{}; chave=chave||v.chave; obraId = obraId===undefined ? v.obra : obraId; filtro = filtro===undefined ? v.filtro : filtro;
-  if(v.cheia) telaCheia(false);
-  if(state.modo!=='c'){ state=compat({modo:'c', sessao:CASCA.ultima||idGeral(), visao:null}); navegar(); }
+  if(state.modo!=='c' || state.visao){ state=estadoSessao(state.modo==='c' ? state.sessao : CASCA.ultima||idGeral(), null); navegar(); }
   CASCA.ctx = chave ? {chave, obra:obraId||null, filtro:filtro||null} : null;
   const t=$('caTxt'); if(!t) return;
   t.value = !chave ? '' : typeof sementeSobre==='function' ? sementeSobre(chave, obraId||null, filtro||'')
@@ -1281,21 +1377,99 @@ function perguntarSobre(chave, obraId, filtro){
   CASCA.rascunho=t.value;
   campoMudou(); focarCampo();
 }
+/* O campo fixo da aba: a pergunta vai para a aba Conversa com o contexto da aba, e a resposta aparece lá. */
+function perguntarAqui(){
+  const i=$('vsPerg'), v=state.visao, texto=i ? i.value.trim() : ''; if(!texto || !v) return;
+  i.value='';
+  CASCA.ctx={chave:v.chave, obra:v.obra||null, filtro:v.filtro||null};
+  enviar(texto);
+}
 function focarCampo(inserir){
-  const t=$('caTxt'); if(!t) return;
+  const t=$('caTxt'); if(!t || state.visao) return;
   if(inserir){ const a=t.selectionStart??t.value.length; t.setRangeText(inserir, a, t.selectionEnd??a, 'end'); campoMudou(); }
   t.focus({preventScroll:true}); if(!inserir) t.setSelectionRange(t.value.length, t.value.length);
 }
-function alternarSide(){ CASCA.side=!CASCA.side; document.querySelector('.app').classList.toggle('side-aberta', CASCA.side); if(CASCA.side){ const a=$('side').querySelector('.nav.on,.nav'); if(a) a.focus(); } }
-function limparFiltroVisao(){ if(!state.visao) return; state.visao={...state.visao, filtro:null}; render(); }
-/* Esc (sem diálogo aberto): fecha o menu, a lateral sobreposta, sai da tela cheia ou fecha a visão. */
+function alternarSide(){ CASCA.side=!CASCA.side; document.querySelector('.app').classList.toggle('side-aberta', CASCA.side); }
+function limparFiltroVisao(){ if(!state.visao) return; state.visao.filtro=null; render(); }
+/* Esc (sem diálogo aberto): fecha o menu aberto ou volta da aba de tela para a aba Conversa. */
 function escCasca(e){
   if(fecharMenus()) return;
-  if(CASCA.side){ alternarSide(); return; }
   const a=document.activeElement; if(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.value) return;
   if(state.modo!=='c' || !state.visao) return;
-  state.visao.cheia ? telaCheia(false) : fecharVisao();
+  fecharVisao();
 }
+
+/* ---------- o topo da sessão: título (com o escopo) e a barra de abas ---------- */
+function rotuloAba(a, s){
+  const fora = a.obra && a.obra!==s.escopo;                   // na Geral (ou de outra obra), a aba diz de qual obra é
+  return `${rotuloVisao(a.chave)}${fora?`<span class="aba-ob"> · ${curtaObra(a.obra)}</span>`:''}`;
+}
+function desenharTopo(){
+  const s=sessaoAtual(), t=tituloSessao(s), v=state.visao, L=abasDe(s), top=$('sesTop');
+  const conv = !v;
+  top.hidden=false;
+  top.innerHTML = `<div class="ses-tit">
+      <h1 title="${esc(t.onde+' · '+t.nome)}">${t.o?`<span class="dot" style="background:${stDot(t.o)}" aria-hidden="true"></span>`:icon('building',16)}<span class="ses-onde">${esc(t.onde)}</span><span class="sepr" aria-hidden="true">·</span><span class="ses-nome">${esc(t.nome)}</span></h1>
+      ${t.o?`<span class="ses-st">${statusCurto(t.o)}</span>`:''}
+    </div>
+    <div class="abas" role="tablist" aria-label="Abas da sessão" onkeydown="teclaAbas(event)">
+      <button type="button" role="tab" class="aba${conv?' on':''}" data-k="conversa" aria-selected="${conv}" aria-controls="main" tabindex="${conv?0:-1}" onclick="ativarAba('conversa')">${icon('message',15)}Conversa</button>
+      ${L.map(a=>{ const k=chaveAba(a), on=v===a, rot=rotuloVisao(a.chave)+(a.obra&&a.obra!==s.escopo?' · '+curtaObra(a.obra):'');
+        return `<span class="aba-c${on?' on':''}"><button type="button" role="tab" class="aba${on?' on':''}" data-k="${k}" aria-selected="${on}" aria-controls="visao" tabindex="${on?0:-1}" aria-keyshortcuts="Delete" onclick="ativarAba('${k}')">${icon(VISAO_IC[a.chave]||'list',15)}${rotuloAba(a, s)}</button><button type="button" class="aba-x" tabindex="-1" aria-label="Fechar ${esc(rot)}" title="Fechar" onclick="fecharAba('${k}')">${icon('x',13)}</button></span>`; }).join('')}
+      <span class="abas-mais"><button type="button" class="aba-add" id="abaAdd" aria-haspopup="menu" aria-expanded="false" aria-controls="abaMenu" aria-label="Abrir uma tela nesta sessão" title="Abrir uma tela" onclick="menuAbas()">${icon('plus',16)}</button>
+        <div class="ca-menu-pop abas-pop" id="abaMenu" role="menu" aria-label="Abrir uma tela" hidden></div></span>
+    </div>`;
+}
+/* ← → entre as abas, Home/End, Delete fecha a aba focada (a Conversa não fecha). */
+function teclaAbas(e){
+  const bs=[...$('sesTop').querySelectorAll('[role=tab]')], i=bs.indexOf(document.activeElement); if(i<0) return;
+  const ir=j=>{ e.preventDefault(); const b=bs[(j+bs.length)%bs.length]; b.focus(); b.click(); };
+  if(e.key==='ArrowRight') ir(i+1); else if(e.key==='ArrowLeft') ir(i-1); else if(e.key==='Home') ir(0); else if(e.key==='End') ir(bs.length-1);
+  else if((e.key==='Delete'||e.key==='Backspace') && bs[i].dataset.k!=='conversa'){ e.preventDefault(); fecharAba(bs[i].dataset.k); }
+}
+function itemMenu(k, ob, extra){
+  const o=ob && OBRAS.find(x=>x.id===ob), n = o && k!=='hoje' ? pendObra(o).filter(p=>p.tela===k).length : k==='aprovacoes' && typeof pendentes==='function' ? pendentes().length : 0;
+  return `<button type="button" role="menuitem"${extra?' aria-haspopup="true"':''} onclick="${extra||`escolherAba('${k}',${ob?`'${ob}'`:'null'})`}">${icon(VISAO_IC[k]||'list',15)}<span>${rotuloVisao(k)}</span>${n?`<span class="n" aria-label="${n} pendentes">${n}</span>`:''}${extra?icon('chevRight',14,'pop-seta'):''}</button>`;
+}
+function menuAbas(passo){
+  const s=sessaoAtual(), ob=s.escopo&&s.escopo!=='geral' ? s.escopo : null;
+  const grupos = MENU_ABAS.map(([g,ks])=>[g, ks.filter(k=>ehVisaoObra(k) && (ob || k!=='entreobras'))]).filter(([,ks])=>ks.length);   // na Geral, 'Entre obras · todas' basta
+  let html;
+  if(passo){                                                  // Geral, 2ª etapa: de qual obra?
+    html = `<div class="pop-cab"><button type="button" role="menuitem" class="pop-volta" aria-label="Voltar à lista de telas" onclick="menuAbas()">${icon('arrowLeft',15)}</button><span>${rotuloVisao(passo)} · de qual obra?</span></div>`
+      + OBRAS.map(o=>`<button type="button" role="menuitem" onclick="escolherAba('${passo}','${o.id}')"><span class="dot" style="background:${stDot(o)}" aria-hidden="true"></span><span>${o.nome}</span><small>${stTxt(o)}</small></button>`).join('');
+  } else {
+    const glob = ob ? [] : [['Geral', visoesGlobais()]];
+    html = [...glob, ...grupos].map(([g,ks])=>`<div class="pop-g" role="group" aria-label="${g}"><div class="pop-sec" aria-hidden="true">${g}</div>${ks.map(k=>
+      g==='Geral' ? itemMenu(k, null) : ob ? itemMenu(k, ob) : itemMenu(k, null, `menuAbas('${k}')`)).join('')}</div>`).join('');
+  }
+  abrirPop('abaAdd', 'abaMenu', html, !!passo);
+}
+function escolherAba(k, ob){ fecharPop(); abrirVisao(k, ob); }
+
+/* ---------- menus do topo e do perfil (um aberto por vez; teclado, Esc, clique fora) ---------- */
+const POP = {b:null, m:null};
+function abrirPop(bId, mId, html, manter){
+  if(!manter) fecharPop();
+  const b=$(bId), m=$(mId); if(!b||!m) return;
+  m.innerHTML=html; m.hidden=false; b.setAttribute('aria-expanded','true'); POP.b=b; POP.m=m;
+  const it=m.querySelector('[role^=menuitem]:not(.pop-volta)')||m.querySelector('[role^=menuitem]'); if(it) it.focus({preventScroll:true});
+}
+function fecharPop(devolver){
+  const {b, m}=POP; if(!m) return false; POP.b=POP.m=null;
+  if(document.contains(m)){ m.hidden=true; m.innerHTML=''; }
+  if(b && document.contains(b)){ b.setAttribute('aria-expanded','false'); if(devolver) b.focus({preventScroll:true}); }
+  return true;
+}
+document.addEventListener('keydown', e=>{
+  const m=POP.m; if(!m || !m.contains(document.activeElement)) return;
+  const bs=[...m.querySelectorAll('[role^=menuitem]')], i=bs.indexOf(document.activeElement), ir=j=>{ e.preventDefault(); bs[(j+bs.length)%bs.length].focus(); };
+  if(e.key==='ArrowDown') ir(i+1); else if(e.key==='ArrowUp') ir(i-1); else if(e.key==='Home') ir(0); else if(e.key==='End') ir(bs.length-1);
+  else if(e.key==='ArrowLeft' && m.querySelector('.pop-volta')){ e.preventDefault(); menuAbas(); }
+  else if(e.key==='ArrowRight' && document.activeElement.getAttribute('aria-haspopup')){ e.preventDefault(); document.activeElement.click(); }
+  else if(e.key==='Tab') fecharPop();
+});
+document.addEventListener('mousedown', e=>{ if(POP.m && !POP.m.contains(e.target) && !POP.b.contains(e.target)) fecharPop(); });
 
 /* ---------- a conversa (centro) ---------- */
 function msgFB(m){ return m.de==='voce' ? meMsg(m.html) : aiMsg(m.tools&&m.tools.length?m.tools:null, m.html+(m.cartoes||[]).join('')); }
@@ -1315,25 +1489,15 @@ const pensandoHTML = () => `<div class="msg ai ca-pensando" role="status"><div c
 function vazioHTML(s){
   const e=s.escopo&&s.escopo!=='geral' ? nomeObra(s.escopo) : null;
   return `<div class="ca-vazio"><div class="aiav">${icon('spark',20)}</div><h2>${e?`Conversa sobre a ${e}`:'Conversa nova'}</h2>
-    <p>${e?`O agente olha só os dados da ${e}.`:'O agente enxerga todas as obras.'} Escreva <b>@</b> para perguntar sobre outra obra só nesta mensagem, ou <b>/</b> para abrir uma visão ao lado.</p></div>`;
+    <p>${e?`O agente olha só os dados da ${e}.`:'O agente enxerga todas as obras.'} Escreva <b>@</b> para perguntar sobre outra obra só nesta mensagem, ou <b>/</b> para abrir uma tela numa aba.</p></div>`;
 }
 const SUGESTOES_PADRAO = ['vamos começar pela Vila Nova, quero um relatório da fase da obra','por que só tem 2.760 blocos?','o que chega amanhã?','quem está na obra hoje?','estamos no prazo?','@Loja Centro o que sobra?','pede 600 kg de aço','transfere o cimento da Loja Centro'];
 function sugestoes(s){ const g = typeof SUGESTOES!=='undefined' ? SUGESTOES : SUGESTOES_PADRAO; const l = typeof g==='function' ? g(s) : g; return Array.isArray(l) ? l : []; }
-function escopoBotao(s){
-  const o=s.escopo&&s.escopo!=='geral' && OBRAS.find(x=>x.id===s.escopo);
-  return `<button type="button" class="ca-escopo" id="caEscopo" aria-haspopup="menu" aria-expanded="false" aria-controls="caEscopoMenu" onclick="menuEscopo()">
-    ${o?`<span class="dot" style="background:${stDot(o)}" aria-hidden="true"></span>${o.nome}`:`${icon('building',14)}Todas as obras`}${icon('chevDown',14)}</button>
-    <div class="ca-menu-pop" id="caEscopoMenu" role="menu" aria-label="Escopo da conversa" hidden>
-      ${[{id:'geral', nome:'Todas as obras'}, ...OBRAS].map(x=>{ const on=(s.escopo||'geral')===x.id;
-        return `<button type="button" role="menuitemradio" aria-checked="${on}" onclick="escolherEscopo('${x.id}')">${x.id==='geral'?icon('building',14):`<span class="dot" style="background:${stDot(x)}" aria-hidden="true"></span>`}<span>${x.nome}</span>${x.id==='geral'?'<small>enxerga as 3 obras</small>':`<small>${stTxt(x)}</small>`}${on?icon('check',14):''}</button>`; }).join('')}
-    </div>`;
-}
 function desenharConversa(){
   const s=sessaoAtual(), m=$('main');
   if(!m.classList.contains('ca')){
     m.className='main ca';
-    m.innerHTML = `<header class="ca-top" id="caTop"></header>
-      <div class="msgs ca-msgs" id="caMsgs" tabindex="-1" aria-label="Mensagens"></div>
+    m.innerHTML = `<div class="msgs ca-msgs" id="caMsgs" tabindex="-1" aria-label="Mensagens"></div>
       <div class="ca-pe">
         <div class="chips" id="caChips" aria-label="Sugestões"></div>
         <div class="composer ca-comp">
@@ -1342,17 +1506,14 @@ function desenharConversa(){
           <label class="sr-only" for="caTxt">Mensagem para o agente</label>
           <textarea id="caTxt" rows="1" autocomplete="off" aria-autocomplete="list" aria-controls="caAc" aria-expanded="false"></textarea>
           <div class="row"><button type="button" class="iconbtn" aria-label="Anexar projeto, NF ou foto" title="Anexar projeto, NF ou foto" onclick="toast('(protótipo) anexar projeto, NF ou foto')">${icon('clip',18)}</button>
-            <span class="ca-dica"><kbd>@</kbd> obra <kbd>/</kbd> visão</span><span class="sp"></span>
+            <span class="ca-dica"><kbd>@</kbd> obra <kbd>/</kbd> abre uma aba</span><span class="sp"></span>
             <button type="button" class="btn amb sm" id="caEnviar" onclick="enviarCampo()">Enviar ${icon('arrowUp',14)}</button></div>
         </div>
       </div>`;
     ligarCampo();
   }
-  const top=$('caTop');
-  top.innerHTML = `<button type="button" class="iconbtn ca-side" aria-label="Mostrar conversas e visões" aria-expanded="${!!CASCA.side}" onclick="alternarSide()">${icon('panel',18)}</button>
-    <div class="ca-id">${escopoBotao(s)}<h1 title="${esc(s.titulo)}">${esc(s.titulo)}</h1></div><span class="sp"></span>
-    <button type="button" class="btn sm" onclick="novaSessao(escopoAtual())">${icon('plus',14)}Nova conversa</button>`;
-  const box=$('caMsgs'), k=s.id+':'+s.msgs.length+':'+(CASCA.pensando?1:0), mesma=box.dataset.k===k, mesmaSes=box.dataset.s===s.id, y=box.scrollTop;
+  const box=$('caMsgs'), k=s.id+':'+s.msgs.length+':'+(CASCA.pensando?1:0), mesma=box.dataset.k===k, mesmaSes=box.dataset.s===s.id;
+  const r=CASCA.rolagem, y = r && r.s===s.id ? r.y : box.scrollTop; CASCA.rolagem=null;   // volta de uma aba de tela no mesmo ponto
   const corpo=mensagensHTML(s);
   const pensa = CASCA.pensando && !(typeof renderPensando==='function' && typeof responder==='function');   // o responder da Conversa desenha o próprio
   box.innerHTML = `<h2 class="sr-only">Mensagens</h2>` + (corpo.trim() ? corpo : vazioHTML(s)) + (pensa ? pensandoHTML() : '');
@@ -1365,6 +1526,8 @@ function desenharConversa(){
   if(t.value!==CASCA.rascunho && document.activeElement!==t) t.value=CASCA.rascunho;
   campoMudou(true);
 }
+/* Ao trocar para uma aba de tela, a conversa some (display:none perde a rolagem): guarda para a volta. */
+function guardarRolagem(){ const m=$('main'), b=$('caMsgs'); if(b && !m.hidden) CASCA.rolagem={s:b.dataset.s, y:b.scrollTop}; }
 /* Mostra o começo da última resposta (não o fim): o gerente lê de cima. */
 function rolarParaUltima(box, suave){
   const raiz=box.querySelector(':scope > .cv-fio')||box, ms=[...raiz.children].filter(x=>!x.matches('.val,.callout,.sr-only')), u=ms[ms.length-1]; if(!u) return;
@@ -1374,7 +1537,7 @@ function rolarParaUltima(box, suave){
   box.scrollTo({top:topo, behavior: suave && !matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'auto'});
 }
 
-/* ---------- campo: @obra (escopo da mensagem) e /visão (abre a visão) ---------- */
+/* ---------- campo: @obra (escopo da mensagem) e /tela (abre a aba) ---------- */
 const AC = {itens:[], i:0, tipo:null, ini:0};
 function aliasesObra(o){ return [o.nome, curtaObra(o.id), o.id].filter(Boolean); }
 function obraDoTexto(t){
@@ -1432,7 +1595,7 @@ function acAtualizar(){
 }
 function acDesenhar(){
   const b=$('caAc'), t=$('caTxt');
-  b.innerHTML = `<div class="cab" aria-hidden="true">${AC.tipo==='@'?'Perguntar sobre a obra':'Abrir a visão ao lado'}</div>`+AC.itens.map((x,i)=>`<div role="option" id="caAc${i}" aria-selected="${i===AC.i}" onmousedown="event.preventDefault()" onclick="acEscolher(${i})">${x.dot?`<span class="dot" style="background:${x.dot}" aria-hidden="true"></span>`:icon(x.ic,15)}<span>${x.rot}</span><span class="h">${x.dica}</span></div>`).join('');
+  b.innerHTML = `<div class="cab" aria-hidden="true">${AC.tipo==='@'?'Perguntar sobre a obra':'Abrir numa aba'}</div>`+AC.itens.map((x,i)=>`<div role="option" id="caAc${i}" aria-selected="${i===AC.i}" onmousedown="event.preventDefault()" onclick="acEscolher(${i})">${x.dot?`<span class="dot" style="background:${x.dot}" aria-hidden="true"></span>`:icon(x.ic,15)}<span>${x.rot}</span><span class="h">${x.dica}</span></div>`).join('');
   b.hidden=false; t.setAttribute('aria-expanded','true'); t.setAttribute('aria-activedescendant','caAc'+AC.i);
   const el=$('caAc'+AC.i); if(el) el.scrollIntoView({block:'nearest'});
 }
@@ -1444,35 +1607,24 @@ function acEscolher(i){
   else { t.setRangeText('', AC.ini, fim, 'end'); t.value=t.value.replace(/\s{2,}/g,' '); abrirVisao(x.valor.k, x.valor.ob); }
   CASCA.rascunho=t.value; acFechar(); campoMudou(true); t.focus({preventScroll:true});
 }
-function fecharMenus(){ const m=$('caEscopoMenu'); if(m && !m.hidden){ m.hidden=true; const b=$('caEscopo'); b.setAttribute('aria-expanded','false'); b.focus(); return true; } return acFechar(); }
-function menuEscopo(){
-  const m=$('caEscopoMenu'), b=$('caEscopo'), abrir=m.hidden; m.hidden=!abrir; b.setAttribute('aria-expanded', abrir);
-  if(abrir){ const on=m.querySelector('[aria-checked=true]')||m.querySelector('button'); on.focus(); }
-}
-function escolherEscopo(id){ const s=sessaoAtual(); trocarEscopo(s.id, id); const b=$('caEscopo'); if(b) b.focus(); }
-document.addEventListener('keydown', e=>{
-  const m=$('caEscopoMenu'); if(!m || m.hidden || !m.contains(document.activeElement)) return;
-  const bs=[...m.querySelectorAll('button')], i=bs.indexOf(document.activeElement);
-  if(e.key==='ArrowDown'||e.key==='ArrowUp'){ e.preventDefault(); bs[(i+(e.key==='ArrowDown'?1:-1)+bs.length)%bs.length].focus(); }
-  else if(e.key==='Home'||e.key==='End'){ e.preventDefault(); bs[e.key==='Home'?0:bs.length-1].focus(); }
-  else if(e.key==='Tab'){ m.hidden=true; $('caEscopo').setAttribute('aria-expanded','false'); }
-});
-document.addEventListener('mousedown', e=>{ const m=$('caEscopoMenu'); if(m && !m.hidden && !e.target.closest('#caEscopoMenu,#caEscopo')){ m.hidden=true; $('caEscopo').setAttribute('aria-expanded','false'); } });
+function fecharMenus(){ return fecharPop(true) || acFechar(); }
 
 const esperar = ms => new Promise(r=>setTimeout(r, ms));
 function enviarMensagem(texto){ return enviar(texto); }       // nome que os chips da Conversa procuram
 function enviarCampo(){ const t=$('caTxt'); if(t) enviar(t.value); }
 async function enviar(texto){
   texto=String(texto||'').trim(); if(!texto || CASCA.pensando) return;
-  const cmd=/^\/(\S+)\s*$/.exec(texto);                         // "/almoxarifado" sozinho: abre a visão, não vai ao agente
+  const cmd=/^\/(\S+)\s*$/.exec(texto);                         // "/almoxarifado" sozinho: abre a aba, não vai ao agente
   if(cmd){ const q=semAcento(cmd[1]), k=[...visoesObra(), ...visoesGlobais()].find(k=>semAcento(rotuloVisao(k)+' '+k+' '+(VISAO_ALIAS[k]||'')).includes(q));
-    if(k){ const t=$('caTxt'); t.value=''; CASCA.rascunho=''; campoMudou(true); abrirVisao(k, ehVisaoObra(k)?(escopoAtual()!=='geral'?escopoAtual():obraFoco()):null); return; } }
-  if(state.modo!=='c'){ state=compat({modo:'c', sessao:CASCA.ultima||idGeral(), visao:null}); navegar(); }
-  const s=sessaoAtual(), t=$('caTxt');
+    if(k){ const t=$('caTxt'); if(t) t.value=''; CASCA.rascunho=''; CASCA.ctx=null; campoMudou(true); abrirVisao(k, ehVisaoObra(k)?(escopoAtual()!=='geral'?escopoAtual():obraFoco()):null); return; } }
+  const v=state.visao, s0 = state.modo==='c' ? state.sessao : CASCA.ultima||idGeral();
+  if(state.modo!=='c' || v){ state=estadoSessao(s0, null); navegar(); }     // a resposta aparece na aba Conversa
+  const s=sessaoAtual(), t=$('caTxt'), c=CASCA.ctx;
   s.escopoMsg = obraDoTexto(texto) || null;
-  if(CASCA.ctx) s.contexto=CASCA.ctx; else delete s.contexto;
-  s.visao = state.visao ? {chave:state.visao.chave, obra:state.visao.obra, filtro:state.visao.filtro} : null;   // a Conversa lê a visão aberta daqui
-  s.msgs.push({de:'voce', hora:hhmm(), html:marcarMencoes(esc(texto))});
+  if(c) s.contexto=c; else delete s.contexto;
+  s.visao = v ? {chave:v.chave, obra:v.obra, filtro:v.filtro} : null;        // a Conversa lê daqui a aba de onde veio
+  const sobre = c ? `<span class="ca-sobre">${icon(VISAO_IC[c.chave]||'list',13)}Sobre ${rotuloVisao(c.chave)}${c.obra?' · '+curtaObra(c.obra):''}</span> ` : '';
+  s.msgs.push({de:'voce', hora:hhmm(), html:sobre+marcarMencoes(esc(texto))});
   CASCA.ctx=null; CASCA.rascunho=''; if(t){ t.value=''; }
   CASCA.pensando=true; render();
   const t0=performance.now(); let novas;
@@ -1481,41 +1633,37 @@ async function enviar(texto){
   catch(err){ console.error(err); novas=[{de:'agente', html:'Não consegui responder agora. Tente de novo em instantes.'}]; }
   await esperar(Math.max(0, 600-(performance.now()-t0)));
   CASCA.pensando=false;
-  (Array.isArray(novas)?novas:[novas]).filter(Boolean).forEach(m=>s.msgs.push(m));
+  (Array.isArray(novas)?novas:[novas]).filter(Boolean).forEach(m=>{ delete m.abrir; s.msgs.push(m); });   // o agente nunca abre aba sozinho
   s.quando='agora';
-  const abrir=[...(novas||[])].reverse().find(m=>m&&m.abrir);
   render();
-  if(abrir && abrir.abrir) abrirVisao(abrir.abrir.chave, abrir.abrir.obra, {filtro:abrir.abrir.filtro});
   focarCampo();
 }
 
-/* ---------- a visão aberta (direita / tela cheia) ---------- */
+/* ---------- a aba de tela: o conteúdo inteiro e, embaixo, um campo só: "Perguntar ao agente sobre isto…" ---------- */
 function statusCurto(o){ return o.status==='plan' ? 'em orçamento' : o.atraso>0 ? `<span class="vs-atraso">${o.atraso} dias de atraso</span>` : stTxt(o); }
-function visaoHTML(v){
-  const o=v.obra && OBRAS.find(x=>x.id===v.obra), rot=rotuloVisao(v.chave);
-  const corpo = o ? `<div class="page vs-page">${(o.status==='plan' && v.chave!=='hoje') ? emOrcamento(o) : (TAB_FNS[v.chave]||TAB_FNS.hoje)(o)}</div>` : (VIEWS[v.chave]||VIEWS.hub)();
-  const arg = `'${v.chave}',${o?`'${o.id}'`:'null'}`;
-  return `<header class="vs-top">
-      ${v.cheia?`<button type="button" class="btn sm vs-volta" onclick="telaCheia(false)">${icon('arrowLeft',15)}Voltar à conversa</button>`:''}
-      <div class="vs-id"><div class="vs-obra">${o?`<span class="dot" style="background:${stDot(o)}" aria-hidden="true"></span><span>${o.nome}</span><span class="sepr" aria-hidden="true">·</span><span>${statusCurto(o)}</span>`:'<span>Todas as obras</span>'}</div>
-        <h2 id="vsTit">${icon(VISAO_IC[v.chave]||'list',17)}${rot}</h2></div>
-      <span class="sp"></span>
-      <button type="button" class="btn sm" onclick="perguntarSobre(${arg},${v.filtro?`'${esc(v.filtro).replace(/'/g,'&#39;')}'`:'null'})">${icon('message',14)}Perguntar sobre isto</button>
-      <button type="button" class="iconbtn vs-cheia-btn" aria-pressed="${!!v.cheia}" aria-label="${v.cheia?'Sair da tela cheia':'Tela cheia'}" title="${v.cheia?'Sair da tela cheia':'Tela cheia'}" onclick="telaCheia(${!v.cheia})">${icon(v.cheia?'minimize':'maximize',17)}</button>
-      <button type="button" class="iconbtn" aria-label="Fechar a visão" title="Fechar (Esc)" onclick="fecharVisao()">${icon('x',18)}</button>
-    </header>
-    ${v.filtro?`<div class="vs-filtro" role="status">${icon('list',14)}<span>Destacando <b>${esc(v.filtro)}</b></span><button type="button" class="link" onclick="limparFiltroVisao()">Tirar o destaque</button></div>`:''}
-    <div class="vs-corpo" id="vsCorpo">${corpo}</div>`;
+function corpoVisao(v){
+  const o=v.obra && OBRAS.find(x=>x.id===v.obra);
+  return o ? `<div class="page vs-page">${(o.status==='plan' && v.chave!=='hoje') ? emOrcamento(o) : (TAB_FNS[v.chave]||TAB_FNS.hoje)(o)}</div>` : (VIEWS[v.chave]||VIEWS.hub)();
 }
+const filtroHTML = v => v.filtro ? `<div class="vs-filtro" role="status">${icon('list',14)}<span>Destacando <b>${esc(v.filtro)}</b></span><button type="button" class="link" onclick="limparFiltroVisao()">Tirar o destaque</button></div>` : '';
 function desenharVisao(){
-  const v=state.visao, el=$('visao'), app=document.querySelector('.app');
-  app.classList.toggle('com-visao', !!v); app.classList.toggle('vs-cheia', !!(v&&v.cheia));
+  const v=state.visao, el=$('visao');
   if(!v){ el.hidden=true; el.innerHTML=''; el.dataset.k=''; return; }
-  const k=v.chave+'/'+(v.obra||''), c0=$('vsCorpo'), mesma=el.dataset.k===k, y=mesma&&c0?c0.scrollTop:0, abriu=el.hidden;
+  const k=state.sessao+':'+chaveAba(v), mesma=el.dataset.k===k, c0=$('vsCorpo'), y=mesma&&c0?c0.scrollTop:0;
   const foco=document.activeElement, idFoco=foco && el.contains(foco) && foco.id;
-  el.hidden=false; el.innerHTML=visaoHTML(v); el.dataset.k=k;
-  if(abriu){ el.classList.remove('entra'); void el.offsetWidth; el.classList.add('entra'); }
-  const c=$('vsCorpo'); c.scrollTop=y;
+  el.hidden=false;
+  const tit=`${rotuloVisao(v.chave)}${v.obra?' · '+nomeObra(v.obra):''}`;
+  if(!mesma){                                                 // moldura nova só ao trocar de aba: o campo guarda o que foi digitado
+    el.innerHTML = `<h2 class="sr-only" id="vsTit">${tit}</h2><div id="vsFiltro"></div><div class="vs-corpo" id="vsCorpo"></div>
+      <form class="vs-perg" onsubmit="perguntarAqui();return false">
+        <label class="sr-only" for="vsPerg">Perguntar ao agente sobre ${esc(tit)}</label>
+        ${icon('spark',16)}<input id="vsPerg" type="text" autocomplete="off" placeholder="Perguntar ao agente sobre isto…" oninput="this.form.querySelector('button').disabled=!this.value.trim()">
+        <button type="submit" class="vs-enviar" aria-label="Perguntar ao agente" title="Perguntar (Enter)" disabled>${icon('arrowUp',15)}</button>
+      </form>`;
+    el.dataset.k=k;
+  }
+  $('vsFiltro').innerHTML=filtroHTML(v);
+  const c=$('vsCorpo'); c.innerHTML=corpoVisao(v); c.scrollTop=y;
   if(v.filtro) realcar(c, v.filtro, mesma);
   if(idFoco && $(idFoco)) $(idFoco).focus({preventScroll:true});
 }

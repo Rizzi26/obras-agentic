@@ -43,6 +43,8 @@ function cvAbrir(chave, ob, filtro, cheia){
   go('obra', ob||'vila-nova', chave);
   if(filtro && typeof destacarDoc==='function') setTimeout(()=>destacarDoc(filtro), 0);
 }
+const abrirVarios = bs => { const [a, ...r] = bs.filter(Boolean); return a ? a.html+menuMais(r.map(b=>({label:b.label, onclick:b.onclick})), {rotulo:'Abrir em outra obra'}) : ''; };
+const visaoItem = (chave, ob, rotulo) => ({label:rotulo, onclick:`cvAbrir('${chave}',${ob?`'${ob}'`:'null'},'')`, html:btnVisao(chave, ob, '', rotulo)});
 const btnVisao = (chave, ob, filtro, rotulo) => botao(rotulo||`Abrir ${VISAO_NOME[chave]||chave}${ob&&!rotulo?' · '+curto(ob):''}`, `cvAbrir('${chave}',${ob?`'${ob}'`:'null'},'${filtro||''}')`, {sm:true, icone:'arrowRight'});
 function cvRepintar(){ typeof repintar==='function' ? repintar() : render(); }
 
@@ -142,13 +144,13 @@ function relCorpo(r, imp, curto){
     ${curto?'':`<section class="cv-sec"><h3>Custo: onde passou</h3><ul class="cv-lista">${r.desvios.map(x=>`<li><span>${x.cat}</span><b class="t-perda">+${brl(x.dif)}</b></li>`).join('')||'<li>Nenhuma etapa acima do previsto.</li>'}</ul>
       <p class="cv-nota">Gasto ${brl(r.gasto)} · comprometido ${brl(r.comp)} · projeção ${brl(r.proj)}.</p></section>`}
     <section class="cv-sec"><h3>Próximos 15 dias</h3><ul class="cv-lista">${prox}</ul></section>
-    <section class="cv-sec"><h3>Riscos</h3><ul class="cv-lista">${riscos||'<li>Nenhum risco aberto.</li>'}</ul>${resto>0?`<p class="cv-nota">e mais ${resto} no relatório completo (Abrir).</p>`:''}</section>`;
+    <section class="cv-sec"><h3>Riscos</h3><ul class="cv-lista">${riscos||'<li>Nenhum risco aberto.</li>'}</ul>${resto>0?`<p class="cv-nota">e mais ${resto} no relatório completo (no ⋯).</p>`:''}</section>`;
 }
 function relAcoes(ob){
   const e=CV_REL[ob];
-  return `${botao('Abrir', `cvRelAbrir('${ob}')`, {sm:true, icone:'file'})}${botao('PDF', `cvRelPdf('${ob}')`, {sm:true, icone:'printer'})}<span class="sp"></span>${e
+  return `${e
     ? `<span class="ld-feito">${icon('check',14)}Enviado ao cliente ${e.hora} · <button type="button" onclick="cvRelDesfazer('${ob}')">Desfazer</button></span>`
-    : botao('Enviar ao cliente', `cvRelEnviar('${ob}')`, {pri:true, sm:true})}`;
+    : botao('Enviar ao cliente', `cvRelEnviar('${ob}')`, {pri:true, sm:true})}${menuMais([{label:`${icon('file',15)}Relatório completo`, onclick:`cvRelAbrir('${ob}')`}, {label:`${icon('printer',15)}PDF`, onclick:`cvRelPdf('${ob}')`}])}<span class="sp"></span>${btnVisao('prazos', ob, '', 'Abrir Cronograma')}`;
 }
 const cartaoRelatorio = ob => () => { const r=relDados(ob);
   return cartao({titulo:relTitulo(r), sub:`${r.o.nome} · ${HOJE.d}/${HOJE.m}/2026 · ${chipFonte({origem:'agente', quem:'cronograma, custos, diário e equipe'})}`, nivel:'documento', icone:'file', classe:'cv-doc',
@@ -157,7 +159,7 @@ function cvRelAbrir(ob){
   const r=relDados(ob);
   abrirModal(`<h2>${relTitulo(r)}</h2><p class="mut sm" style="margin:-4px 0 16px">${r.o.nome} · ${r.o.tipo} · gerado pelo agente em ${HOJE.d}/${HOJE.m}/2026</p>
     <div class="cv-doc-modal">${relCorpo(r)}</div>
-    <div class="row" style="margin-top:20px">${botao('Ver o cronograma', `closeModal();cvAbrir('prazos','${ob}')`)}<span class="sp"></span>${botao('PDF', `cvRelPdf('${ob}')`, {icone:'printer'})}${CV_REL[ob]?pill('ok',`enviado ${CV_REL[ob].hora}`):botao('Enviar ao cliente', `closeModal();cvRelEnviar('${ob}')`, {pri:true})}</div>`);
+    <div class="row" style="margin-top:20px">${botao('Ver o cronograma', `closeModal();cvAbrir('prazos','${ob}')`)}<span class="sp"></span>${menuMais([{label:`${icon('printer',15)}PDF`, onclick:`cvRelPdf('${ob}')`}], {sm:false})}${CV_REL[ob]?pill('ok',`enviado ${CV_REL[ob].hora}`):botao('Enviar ao cliente', `closeModal();cvRelEnviar('${ob}')`, {pri:true})}</div>`);
   $('modalBox').style.width='760px';
 }
 function cvRelPdf(ob){
@@ -270,7 +272,7 @@ function temaChega(ob){
     html:`${nAm}${prox1}${late.length?` E o ${docRef(late[0].l.id)} da Gerdau segue sem data.`:''}`,
     cartoes:[cartao({titulo:`Entregas ${onde} · próximos 10 dias`, sub:chipFonte({origem:'tela', quem:'Pedidos'}), nivel:'consulta',
       corpo:linhas.length?tabela(['Quando','Pedido','Item',...(ob?[]:['Obra']),'Estado'], linhas):'<div class="cv-c-b mut">Nenhum pedido a caminho.</div>',
-      rodape:`<span class="sp"></span>${obras.filter(o=>L.some(x=>x.ob===o)).map(o=>btnVisao('kanban', o, '', obras.length>1?`Pedidos · ${curto(o)}`:'Abrir Pedidos')).join('')}`})]})];
+      rodape:`<span class="sp"></span>${abrirVarios(obras.filter(o=>L.some(x=>x.ob===o)).map(o=>visaoItem('kanban', o, obras.length>1?`Pedidos · ${curto(o)}`:'Abrir Pedidos')))}`})]})];
 }
 
 /* 4. Quem está na obra hoje */
@@ -304,7 +306,7 @@ function temaPrazo(ob, m0){
     : lc ? `Sim: a Loja Centro está <b>${prazoTxt(lc).toLowerCase()}</b>, entrega prevista em ${lc.previsao} contra ${lc.prazo}.` : `O Galpão ainda não tem cronograma: está em orçamento.`;
   return [cvMsg('agente', {nivel:vn?'propoe':'consulta', tools:['cronograma','pedidos em trânsito','equipe alocada','previsão do tempo'], html:txt, visao:{chave:'prazos', obra:(vn||lc||{}).id||'vila-nova'},
     cartoes:m=>[cartao({titulo:'Prazo das obras', sub:chipFonte({origem:'tela', quem:'Cronograma'}), nivel:'consulta', corpo:tabela(['Obra','Previsão','Contrato','Situação'], linhas)+causas,
-        rodape:`${vn&&!m.plano?botao(`Ver o plano de ${PRAZO_VN.recupera} dias como decisões`, `cvPlano('${m.id}')`, {sm:true, icone:'list'}):''}<span class="sp"></span>${obras.filter(o=>o.status!=='plan').map(o=>btnVisao('prazos', o.id, '', obras.length>1?`Cronograma · ${curto(o.id)}`:'Abrir Cronograma')).join('')}`}),
+        rodape:`${vn&&!m.plano?botao(`Ver o plano de ${PRAZO_VN.recupera} dias como decisões`, `cvPlano('${m.id}')`, {sm:true, icone:'list'}):''}<span class="sp"></span>${abrirVarios(obras.filter(o=>o.status!=='plan').map(o=>visaoItem('prazos', o.id, obras.length>1?`Cronograma · ${curto(o.id)}`:'Abrir Cronograma')))}`}),
       m.plano ? cartaoDecisao(['aco','armadores','telhas','concreto'], {titulo:`Plano: o atraso cai de ${vn.atraso} para ${vn.atraso-PRAZO_VN.recupera} dias`}) : '']})];
 }
 function cvPlano(id){ const m=CV_MSG[id]; if(!m) return; cvComPlano(); m.plano=true; cvRepintar(); }

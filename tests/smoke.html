@@ -1,12 +1,21 @@
 <!doctype html><meta charset="utf-8"><body><pre id="out">rodando</pre><script>
-// rotas antigas (compatibilidade) + o esquema novo: #c/<sessao>[/v/<chave>[/<obra>][/cheia]]
-const routes=['c/geral','c/geral/v/inventario/vila-nova','c/geral/v/kanban/vila-nova/cheia','c/vn-aco/v/prazos/vila-nova','c/geral/v/aprovacoes','c/geral/v/estoque/cheia','c/lc-sobras','home','hub','estoque','fluxos','obra/vila-nova/chat','obra/vila-nova/overview','obra/vila-nova/componentes','obra/vila-nova/kanban','obra/vila-nova/inventario','obra/vila-nova/equipe','obra/vila-nova/prazos','obra/loja-centro/overview','obra/galpao/chat','campo','aprovacoes','obra/vila-nova/diario','obra/vila-nova/medicoes','obra/vila-nova'];
+// rotas antigas (compatibilidade) + o esquema novo: #c/<sessao>[/t/<chave>[/<obra>]] (o /v/…[/cheia] antigo vira /t/)
+const routes=['c/geral','c/geral/t/kanban/vila-nova','c/vn-aco/t/inventario','c/geral/t/aprovacoes','c/geral/v/inventario/vila-nova','c/geral/v/kanban/vila-nova/cheia','c/vn-aco/v/prazos/vila-nova','c/geral/v/aprovacoes','c/geral/v/estoque/cheia','c/lc-sobras','home','hub','estoque','fluxos','obra/vila-nova/chat','obra/vila-nova/overview','obra/vila-nova/componentes','obra/vila-nova/kanban','obra/vila-nova/inventario','obra/vila-nova/equipe','obra/vila-nova/prazos','obra/loja-centro/overview','obra/galpao/chat','campo','aprovacoes','obra/vila-nova/diario','obra/vila-nova/medicoes','obra/vila-nova'];
 // legado → visão certa (hash final esperado contém o trecho)
-const compat={'home':'#c/geral','hub':'/v/hub','estoque':'/v/estoque','aprovacoes':'/v/aprovacoes','obra/vila-nova/kanban':'/v/kanban/vila-nova','obra/loja-centro/overview':'/v/overview/loja-centro','obra/vila-nova':'/v/hoje/vila-nova','fluxos':'#fluxos','campo':'#campo'};
+const compat={'home':'#c/geral','hub':'/t/hub','estoque':'/t/estoque','aprovacoes':'/t/aprovacoes','obra/vila-nova/kanban':'/t/kanban/vila-nova','obra/loja-centro/overview':'/t/overview/loja-centro','obra/vila-nova':'/t/hoje/vila-nova','c/geral/v/kanban/vila-nova/cheia':'#c/geral/t/kanban/vila-nova','c/geral/v/estoque/cheia':'#c/geral/t/estoque','fluxos':'#fluxos','campo':'#campo'};
 const api=["go('obra','vila-nova','inventario'); if(state.visao.chave!=='inventario'||state.visao.obra!=='vila-nova') throw Error('go→abrirVisao')",
+ "if(!document.getElementById('main').hidden||document.getElementById('visao').hidden) throw Error('uma coisa por vez: a aba de tela ocupa a área')",
  "abrirVisao('kanban','vila-nova',{filtro:'Gerdau'}); if(!document.querySelector('#visao .vs-realce')) throw Error('filtro sem destaque')",
- "telaCheia(true); if(!document.querySelector('.app.vs-cheia')||!location.hash.endsWith('/cheia')) throw Error('tela cheia')",
+ "telaCheia(true); if(location.hash.includes('cheia')||document.getElementById('visao').hidden) throw Error('telaCheia é no-op')",
+ "if(!/\\/t\\/kanban\\/vila-nova$/.test(location.hash)||sessaoAtual().abaAtiva!=='kanban/vila-nova') throw Error('rota da aba')",
+ "abrirVisao('inventario','vila-nova'); if(sessaoAtual().abas.filter(a=>a.chave==='inventario').length!==1) throw Error('aba repetida')",
+ "fecharAba('inventario/vila-nova'); if(sessaoAtual().abas.some(a=>a.chave==='inventario')||state.visao) throw Error('× fecha a aba e volta à Conversa')",
+ "abrirVisao('kanban','vila-nova');",
  "telaCheia(false); fecharVisao(); if(state.visao||!document.getElementById('visao').hidden) throw Error('fechar')",
+ "if(!sessaoAtual().abas.some(a=>a.chave==='kanban')) throw Error('a aba fica guardada na sessão')",
+ "abrirVisao('kanban','vila-nova'); abrirSessao('vn-aco'); abrirSessao('geral'); if(state.visao||!sessaoAtual().abas.some(a=>a.chave==='kanban')) throw Error('abrir a sessão: aba Conversa, abas guardadas')",
+ "if(document.body.classList.contains('notes')||document.querySelector('.val:not([hidden])')&&getComputedStyle(document.querySelector('.val')).display!=='none') throw Error('notas de validação começam desligadas')",
+ "if(document.querySelector('#side .nav.vs, #side select, #caEscopo')) throw Error('lateral só com conversas, sem seletor de escopo')",
  "abrirVisao('inventario','vila-nova',{filtro:'bloco'}); perguntarSobre(); if(!/Almoxarifado/.test(document.getElementById('caTxt').value)) throw Error('perguntarSobre')",
  "const id=novaSessao('vila-nova','teste'); if(!sessoes().some(s=>s.id===id)) throw Error('novaSessao')",
  "trocarEscopo(sessaoAtual().id,'loja-centro'); if(sessaoAtual().escopo!=='loja-centro') throw Error('trocarEscopo')"];

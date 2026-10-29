@@ -145,7 +145,7 @@ function linhaProp(p, {comObra=true, foco=false, recusa=false}={}){
     titulo:`<a href="#" class="ld-ver" onclick="verProp('${p.id}');return false">${p.tit}</a>`,
     conta: feito ? p.feito : p.conta(), valor:p.valor, foco,
     acao:{label:p.acao, onclick:`aprovarProp('${p.id}')`},
-    sec:[...(recusa?[{label:'Recusar', onclick:`recusarProp('${p.id}')`}]:[]), {label:'Ajustar', onclick:`prop('${p.id}').ajustar()`}],
+    sec:[{label:'Ajustar', onclick:`prop('${p.id}').ajustar()`}, ...(recusa?[{label:'Recusar', onclick:`recusarProp('${p.id}')`}]:[])],
     estado: feito ? {feito:p.st==='recusada'?'Recusado':'Aprovado', hora:p.quando, quem:'Rizzi', desfazer:`desfazerProp('${p.id}')`} : 'pendente'});
 }
 /* Re-renderiza sem a página pular e devolve o foco ao Desfazer da linha que acabou de mudar. */
@@ -199,7 +199,7 @@ function verProp(id){
     <h2>${p.tit}</h2><p class="mut ap-meta">${NOME_OBRA[p.obra]} · ${chipFonte({origem:'agente'})} · ${p.prazo}</p>
     <div class="ap-conta">${p.st==='pendente'?p.conta():p.feito}</div>
     <p class="ap-det">${p.det}</p>
-    <div class="row" style="flex-wrap:wrap">${botao('Abrir onde está', `closeDrawer();prop('${id}').ver()`)}${p.st==='pendente'?botao('Ajustar', `closeDrawer();prop('${id}').ajustar()`)+botao('Recusar', `closeDrawer();recusarProp('${id}')`):''}</div>`;
+    <div class="row" style="flex-wrap:wrap">${botao('Abrir onde está', `closeDrawer();prop('${id}').ver()`)}${p.st==='pendente'?menuMais([{label:'Ajustar', onclick:`closeDrawer();prop('${id}').ajustar()`}, {label:'Recusar', onclick:`closeDrawer();recusarProp('${id}')`}]):''}</div>`;
   $('drawer').classList.add('on');
 }
 
@@ -404,7 +404,7 @@ function ckTela(){
       <div><dt>Regime</dt><dd>${CK.regime}</dd></div>
     </dl>
     <p class="ck-alc" id="ckalc"></p>
-    <div class="row">${botao(`${icon('users',15)}Cotar com 5 fornecedores <span class="mut">· respostas em 1–3 h</span>`, 'ckCotacao()')}<span class="sp"></span><button type="button" class="btn amb" id="ckok" onclick="confirmCheckout()"></button></div>`);
+    <div class="row">${menuMais([{label:`${icon('users',15)}Cotar com 5 fornecedores antes · respostas em 1–3 h`, onclick:'ckCotacao()'}])}<span class="sp"></span><button type="button" class="btn amb" id="ckok" onclick="confirmCheckout()"></button></div>`);
   ckCalc();
 }
 function ckPasso(i, d){ const x=CK.itens[i], passo=x.q>=1000?100:x.q>=100?10:1; x.q=Math.max(0,x.q+d*passo); $('ckq'+i).value=x.q; ckCalc(); }
@@ -457,7 +457,7 @@ confirmCheckout = function(){
       <table class="sm" style="margin-top:8px"><tr><th>Insumo</th><th class="num">Qtd</th><th class="num">Preço</th><th class="num">Total</th></tr>
       ${p.xs.map(x=>`<tr><td>${x.nome}</td><td class="num">${num(x.q)} ${x.un}</td><td class="num">${brl2(x.forn[x.fi].p)}</td><td class="num">${brl2(ckPreco(x))}</td></tr>`).join('')}
       <tr><td colspan="3"><b>Total · boleto 28 dias</b></td><td class="num"><b>${brl2(p.xs.reduce((a,x)=>a+ckPreco(x),0))}</b></td></tr></table></section>`).join('')}
-    <div class="row" style="flex-wrap:wrap">${botao('Baixar PDF', "toast('(protótipo) baixaria o PDF')", {icone:'download'})}${botao('Enviar depois', `closeModal();go('obra','${CK.obra}','${tabDe('pedidos','kanban')}')`)}<span class="sp"></span>${botao(`Enviar ${peds.length>1?'os pedidos':'ao fornecedor'} por WhatsApp`, 'ckWhats()', {pri:true, icone:'message'})}</div>`);
+    <div class="row" style="flex-wrap:wrap">${menuMais([{label:`${icon('download',15)}Baixar PDF`, onclick:"toast('(protótipo) baixaria o PDF')"}, {label:'Enviar depois', onclick:`closeModal();go('obra','${CK.obra}','${tabDe('pedidos','kanban')}')`}])}<span class="sp"></span>${botao(`Enviar ${peds.length>1?'os pedidos':'ao fornecedor'} por WhatsApp`, 'ckWhats()', {pri:true, icone:'message'})}</div>`);
 };
 function ckWhats(){
   const ob=CK.obra, ls=CK.lotes, col=colDe(/Pedido (enviado|feito)/i,2), olds=ls.map(l=>({col:l.col,eta:l.eta}));
