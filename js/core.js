@@ -1,10 +1,72 @@
+/* =====================================================================================================
+   BASE DO REDESIGN (design/direcao.md). Este bloco é a referência para quem escreve telas.
+
+   ROTAS  #home · #hub · #estoque · #fluxos · #aprovacoes · #campo · #obra/<id>/<tela>
+     <tela> é a chave de TAB_FNS e continua a mesma de antes (go('obra',id,'kanban') segue valendo).
+     Cada tela pertence a uma aba de 1º nível (GRUPOS) e aparece como segmento de 2º nível:
+       Hoje ......... hoje
+       Suprimentos .. componentes (Falta comprar) · kanban (Pedidos) · inventario (Almoxarifado) · entreobras (Entre obras)
+       Custos ....... overview (Orçamento) · medicoes (Medições)
+       Execução ..... prazos (Cronograma) · diario (Diário) · equipe (Equipe)
+     #obra/<id> e #obra/<id>/chat abrem 'hoje'; 'chat' abre também o painel do agente (PAINEL.aberto).
+     Tela nova: TAB_FNS.chave = o => html e GRUPOS.find(g=>g.k==='custos').telas.push(['chave','Rótulo']).
+
+   COMPONENTES GLOBAIS (todos devolvem HTML; onclick é sempre uma string de JS, como no resto do protótipo)
+     linhaDecisao({prazo, tom, obra, titulo, conta, valor, acao:{label,onclick}, sec:[{label,onclick}], estado, foco, doc})
+       prazo 'hoje 17h' · tom 'perda'|'pede'|'caminho'|'ok'|'info' (cor do prazo, padrão 'pede') · obra id ou nome
+       conta: texto ou linhaConta(...) · valor: número (vira R$) ou texto · acao: nomeada pela consequência
+       ("Aprovar R$ 9.165"); é ocre só com foco:true (uma por lista), senão secundária · sec: botões pequenos
+       estado: 'pendente' (padrão) ou {feito:'Aprovado', hora:'08:14', quem:'Rizzi', desfazer:'js'}: a linha fica no lugar.
+       Agrupe com listaDecisoes([...linhas]).
+     linhaConta({precisa, saldo, aCaminho, cotando, transf, falta, comprar, un, fonte})   (Suprimentos: linhaConta(contaDe(obra, insumo)))
+       "precisa X − saldo Y − a caminho Z [− em cotação K] [− transferência T] = falta F → comprar C"; falta e comprar são calculados
+       se omitidos; fonte (texto ou chipFonte) vai numa linha abaixo.
+     chipFonte({origem, quem, hora})  origem: 'agente'|'whatsapp'|'nf'|'sinapi'|'cotacao'|'projeto'|'tela'
+     pill(estado, texto)  estado: 'pede'|'perda'|'caminho'|'ok'|'info' (aceita ok/warn/bad/info/gray). Pill não clica.
+     botao(label, onclick, {pri, sm, icone, desab, title})  pri:true = ocre, uma por bloco. Proibido "Avançar".
+     docRef('PED-0162' [, texto])  link para o cartão certo (Pedidos da obra, ou Estoque entre obras para TRF);
+       ao chegar, o elemento com data-doc="PED-0162" (ou o menor cartão/linha com o código) pisca 1 s.
+     kpi({rotulo, valor, contexto, projecao, tom})  no máximo 3 por tela; projecao:true → selo "se aprovar".
+     segmento(itens, ativo, {rotulo})  itens [{k, label, n, onclick}]: controle segmentado (2º nível ou filtro).
+     val(texto)  nota de validação: faixa fina recolhível, no topo da tela; some com "Notas de validação" desligadas.
+     toast(texto) · toastDesfazer(texto, fnDesfazer)  aria-live; "(protótipo) …" sai na variante neutra.
+     abrirModal(html) · closeModal() · closeDrawer()  Modal grava, drawer consulta. Preencher #modalBox/#drawerPane e
+       ligar a classe 'on' continua valendo: a base põe role="dialog", X, Esc, foco preso e devolvido, rodapé fixo (o
+       último .row com botões) e ignora o clique fora quando o modal tem campo de formulário. No celular vira bottom sheet.
+   ===================================================================================================== */
+
 /* ===================== ESTADO / ROTAS ===================== */
-let state = {view:'home', obra:null, tab:'chat'};
-function go(view, obra, tab){ state={view, obra:obra||null, tab:tab||'chat'}; location.hash = [view,obra,tab].filter(Boolean).join('/'); render(); }
-window.onhashchange = () => { const [v,o,t]=location.hash.slice(1).split('/'); if(v){state={view:v,obra:o||null,tab:t||'chat'}; render();} };
+let state = {view:'home', obra:null, tab:'hoje'};
+const PAINEL = {aberto:false};                       // painel do agente da obra (recolhível, à direita)
+function rota(view, obra, tab){
+  if(view!=='obra') return {view, obra:obra||null, tab:tab||'hoje'};
+  if(!tab || tab==='chat'){ if(tab==='chat') PAINEL.aberto=true; tab='hoje'; }
+  const o=OBRAS.find(x=>x.id===obra); if(o && o.status==='plan' && tab==='hoje') PAINEL.aberto=true;   // obra em orçamento: o orçamento corre no chat
+  return {view, obra:obra||null, tab};
+}
+function go(view, obra, tab){
+  state=rota(view, obra, tab);
+  const h='#'+[view, obra, view==='obra'?state.tab:tab].filter(Boolean).join('/');
+  if(location.hash!==h) history.pushState(null,'',h);
+  render();
+}
+window.onhashchange = () => { const [v,o,t]=location.hash.slice(1).split('/'); if(!v) return;
+  state=rota(v,o,t); if(v==='obra' && t!==state.tab) history.replaceState(null,'','#obra/'+o+'/'+state.tab); render(); };
 const $ = id => document.getElementById(id);
-function toast(t){ const e=$('toast'); e.textContent=t; e.style.display='block'; clearTimeout(e._t); e._t=setTimeout(()=>e.style.display='none',2600); }
+const esc = t => String(t).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function obra(){ return OBRAS.find(o=>o.id===state.obra); }
+
+/* ===================== TOAST (role=status, aria-live) ===================== */
+function mostrarToast(html, ms, neutro){
+  const e=$('toast'); clearTimeout(e._t); clearTimeout(e._h);
+  e.innerHTML=`<div class="t-in">${html}</div>`; e.classList.toggle('neutro', !!neutro);
+  e.style.display='block'; void e.offsetWidth; e.classList.add('on');
+  const contar=()=>{ clearTimeout(e._t); e._t=setTimeout(esconderToast, ms); };
+  e.onmouseenter=e.onfocusin=()=>clearTimeout(e._t); e.onmouseleave=e.onfocusout=contar;   // pausa no hover e no foco
+  contar();
+}
+function esconderToast(){ const e=$('toast'); e.classList.remove('on'); e._h=setTimeout(()=>{ if(!e.classList.contains('on')) e.style.display='none'; },170); }
+function toast(t){ const neutro=/^\(protótipo\)/.test(t); mostrarToast((neutro?icon('info',15):'')+`<span>${esc(t)}</span>`, neutro?2600:3200, neutro); }
 
 /* Humano no loop: toda ação do agente ou do usuário fica registrada (quem, quando, de onde veio).
    A tela de aprovações/registro (js/features/proativo.js) lê daqui; qualquer feature grava aqui. */
@@ -14,32 +76,93 @@ const LOG = [
   {quando:'24/10 18:05', obra:'loja-centro', quem:'Ana P.', origem:'tela', texto:'Recebimento conferido · PED-0109 · porcelanato 60×60'},
 ];
 function registrar(texto, o={}){ LOG.unshift({quando:'28/10 '+new Date().toTimeString().slice(0,5), obra:o.obra||state.obra||'vila-nova', quem:o.quem||'Rizzi', origem:o.origem||'tela', texto}); }
-/* Aviso com "Desfazer": use em toda ação que muda dado (aplicar economia, aprovar, transferir). */
+/* Aviso com "Desfazer": use em toda ação que muda dado (aplicar economia, aprovar, transferir). 8 s, pausa no hover/foco. */
 function toastDesfazer(msg, desfazer){
-  const e=$('toast'); e.innerHTML=`<span>${msg}</span>`+(desfazer?` <a href="#" style="margin-left:12px;color:var(--accent);font-weight:600">Desfazer</a>`:'');
-  e.style.display='block'; clearTimeout(e._t); e._t=setTimeout(()=>e.style.display='none',6000);
-  const a=e.querySelector('a'); if(a) a.onclick=ev=>{ev.preventDefault(); desfazer(); e.style.display='none'; registrar('Desfez: '+msg); render();};
+  mostrarToast(`<span>${msg}</span>`+(desfazer?`<button type="button" class="t-undo">Desfazer</button>`:''), 8000);
+  const b=$('toast').querySelector('.t-undo');
+  if(b) b.onclick=()=>{ desfazer(); esconderToast(); registrar('Desfez: '+msg); render(); };
 }
-function val(texto){ return `<div class="callout val">${icon('flask')}<div><b>Validar com o gerente de obra:</b> ${texto}</div></div>`; }
+
+/* ===================== COMPONENTES GLOBAIS ===================== */
+/* Nota de validação: faixa fina recolhível com visual de pesquisa (não é pendência do produto). */
+function val(texto){
+  return `<details class="val"><summary>${icon('flask',14)}<span class="vt">Validar</span><span class="vq">${texto}</span>${icon('chevDown',14,'chev')}</summary></details>`;
+}
+const TOM_PILL = {pede:'warn', perda:'bad', caminho:'info', ok:'ok', info:'gray', warn:'warn', bad:'bad', gray:'gray'};
+function pill(estado, texto){ return `<span class="pill ${TOM_PILL[estado]||'gray'}">${texto}</span>`; }
+function botao(label, onclick, op={}){
+  return `<button type="button" class="btn${op.pri?' amb':''}${op.sm?' sm':''}" onclick="${onclick}"${op.desab?' disabled':''}${op.title?` title="${esc(op.title)}"`:''}>${op.icone?icon(op.icone,15):''}${label}</button>`;
+}
+const FONTE_IC = {agente:['spark','agente'], whatsapp:['message','WhatsApp'], nf:['receipt','NF-e'], sinapi:['ruler','SINAPI'], cotacao:['cart','cotação'], projeto:['file','projeto'], tela:['list','tela']};
+function chipFonte({origem='tela', quem, hora}={}){
+  const [ic,nome]=FONTE_IC[String(origem).toLowerCase()]||['info',origem];
+  return `<span class="fonte">${icon(ic,13)}<b>${nome}</b>${quem?` · ${quem}`:''}${hora?` · ${hora}`:''}</span>`;
+}
+function linhaConta({precisa, saldo=0, aCaminho=0, cotando=0, transf=0, falta, comprar, un='', fonte}={}){   // cotando: opcional, "− em cotação K" (Suprimentos)
+  const f = falta ?? Math.max(0, precisa - saldo - aCaminho - cotando - transf), c = comprar ?? f, n=v=>num(v)+(un?' '+un:'');
+  const t=(r,v)=>`<span class="lc-t"><small>${r}</small>${n(v)}</span>`, op=s=>`<span class="lc-op">${s}</span>`;
+  return `<div class="lc"><div class="lc-eq">${t('precisa',precisa)}${op('−')}${t('saldo',saldo)}${op('−')}${t('a caminho',aCaminho)}${cotando?op('−')+t('em cotação',cotando):''}${transf?op('−')+t('transferência',transf):''}${op('=')}<span class="lc-t lc-falta ${f>0?'t-perda':'t-ok'}"><small>falta</small>${n(f)}</span>${op('→')}<span class="lc-t lc-comprar"><small>comprar</small>${n(c)}</span></div>${fonte?`<div class="lc-fonte">${typeof fonte==='string'?`<span class="fonte">${fonte}</span>`:chipFonte(fonte)}</div>`:''}</div>`;
+}
+function linhaDecisao({prazo='', tom='pede', obra:ob, titulo, conta, valor, acao, sec=[], estado, foco, doc}={}){
+  const nomeOb = ob ? (NOME_OBRA[ob]||ob) : '', v = typeof valor==='number' ? brl(valor) : (valor||'');
+  const feito = estado && typeof estado==='object' && estado.feito;
+  const acts = feito
+    ? `<div class="ld-feito">${icon('check',14)}${estado.feito}${estado.hora?' '+estado.hora:''}${estado.quem?' por '+estado.quem:''}${estado.desfazer?` · <button type="button" onclick="${estado.desfazer}">Desfazer</button>`:''}</div>`
+    : `${sec.map(s=>botao(s.label, s.onclick, {sm:true})).join('')}${acao?botao(acao.label, acao.onclick, {pri:!!foco}):''}`;
+  return `<div class="ld${feito?' feito':''}"${doc?` data-doc="${doc}"`:''}><div class="ld-prazo t-${tom}">${prazo}</div>
+    <div class="ld-txt"><div class="ld-tit">${nomeOb?`<span class="ld-obra">${nomeOb} · </span>`:''}${titulo}</div>${conta?`<div class="ld-conta">${conta}</div>`:''}</div>
+    <div class="ld-valor">${v}</div><div class="ld-acts">${acts}</div></div>`;
+}
+const listaDecisoes = linhas => `<div class="ld-lista">${linhas.join('')}</div>`;
+function kpi({rotulo, valor, contexto, projecao, tom}={}){
+  const cor = {perda:'var(--redInk)', ok:'var(--greenInk)', pede:'var(--amberInk)', caminho:'var(--blueInk)'}[tom];
+  return `<div class="card kpi"><div class="l">${rotulo}${projecao?`<span class="proj">${projecao===true?'se aprovar':projecao}</span>`:''}</div><div class="v"${cor?` style="color:${cor}"`:''}>${valor}</div>${contexto?`<div class="s mut">${contexto}</div>`:''}</div>`;
+}
+function segmento(itens, ativo, op={}){
+  return `<div class="seg" role="tablist"${op.rotulo?` aria-label="${esc(op.rotulo)}"`:''}>${itens.map(i=>`<button type="button" role="tab" class="${i.k===ativo?'on':''}" aria-selected="${i.k===ativo}" onclick="${i.onclick}">${i.label}${i.n?`<span class="n" aria-label="${i.n} pendentes">${i.n}</span>`:''}</button>`).join('')}</div>`;
+}
+/* Referência de documento: PED-xxxx abre Pedidos da obra; TRF-xxxx abre Estoque entre obras. */
+function docRef(id, texto){ return `<a class="docref" href="#" onclick="irDoc('${id}');return false">${texto||id}</a>`; }
+function irDoc(id){
+  closeModal(); closeDrawer();
+  const f = /^PED-/.test(id) && typeof acharLote==='function' && acharLote(id);
+  if(f) go('obra', f.ob, 'kanban'); else if(/^TRF-/.test(id)) go('estoque');
+  setTimeout(()=>destacarDoc(id), 0);
+}
+function destacarDoc(id){
+  const m=$('main'); let el=m.querySelector(`[data-doc="${id}"]`);
+  if(!el) el=[...m.querySelectorAll('.kc,tr,.ld,.card')].filter(e=>e.textContent.includes(id)).sort((a,b)=>a.textContent.length-b.textContent.length)[0];
+  if(!el) return;
+  el.scrollIntoView({block:'center'}); el.classList.remove('doc-chegou'); void el.offsetWidth; el.classList.add('doc-chegou');
+  setTimeout(()=>el.classList.remove('doc-chegou'), 1100);
+}
 
 /* ===================== SIDEBAR ===================== */
+/* O ponto de status tem um significado só (sidebar, hub e cabeçalho): vermelho = em risco, verde = no prazo, cinza = em orçamento. */
+const stDot = o => o.status==='risco'?'var(--red)':o.status==='ok'?'var(--green)':'#8a938f';
+const stTxt = o => o.status==='risco'?'em risco':o.status==='ok'?'no prazo':'em orçamento';
 function renderSide(){
-  const st = o => o.status==='risco'?'var(--red)':o.status==='ok'?'var(--green)':'var(--faint)';
   recalcTransf();
+  const item = (v, ic, label, n) => `<a class="nav ${state.view===v?'on':''}" href="#${v}"${state.view===v?' aria-current="page"':''} onclick="go('${v}');return false">${icon(ic)}${label}${n?`<span class="count">${n}</span>`:''}</a>`;
+  const extra = n => item(n.view, n.icon, n.label, n.count&&n.count());
+  const ap = NAV_EXTRA.find(n=>n.view==='aprovacoes'), outros = NAV_EXTRA.filter(n=>n!==ap);
+  const trf = TRANSF.filter(t=>t.sug>0).length;
   $('side').innerHTML = `
-    <div class="brand"><div class="logo">${icon('spark',22)}</div>Canteiro</div>
-    <div class="fict">${icon('info',14)}<span>Protótipo · todos os dados são fictícios e nenhum botão compra ou envia nada.</span></div>
-    <a class="nav ${state.view==='home'?'on':''}" href="#home" onclick="go('home');return false">${icon('message')}Início — agente</a>
-    <a class="nav ${state.view==='hub'?'on':''}" href="#hub" onclick="go('hub');return false">${icon('building')}Todas as obras</a>
-    <a class="nav ${state.view==='estoque'?'on':''}" href="#estoque" onclick="go('estoque');return false">${icon('swap')}Estoque entre obras${TRANSF.filter(t=>t.sug>0).length?`<span class="count">${TRANSF.filter(t=>t.sug>0).length}</span>`:''}</a>
-    ${NAV_EXTRA.map(n=>`<a class="nav ${state.view===n.view?'on':''}" href="#${n.view}" onclick="go('${n.view}');return false">${icon(n.icon)}${n.label}${n.count?`<span class="count">${n.count()}</span>`:''}</a>`).join('')}
+    <div class="brand"><div class="logo">${icon('spark',17)}</div>Canteiro<span class="tag">protótipo</span></div>
+    ${item('home','message','Início')}
+    ${ap?extra(ap):''}
+    ${item('hub','building','Todas as obras')}
+    ${item('estoque','swap','Estoque entre obras', trf)}
+    ${outros.map(extra).join('')}
     <div class="sec">Obras</div>
-    ${OBRAS.map(o=>`<a class="nav ${state.obra===o.id?'on':''}" href="#" onclick="go('obra','${o.id}','chat');return false"><span class="dot" style="background:${st(o)}"></span>${o.nome}<small>${o.status==='plan'?'orçando':o.progresso+'%'}</small></a>`).join('')}
+    ${OBRAS.map(o=>{ const n=pendObra(o).length, on=state.view==='obra'&&state.obra===o.id;
+      return `<a class="nav ${on?'on':''}" href="#obra/${o.id}/hoje"${on?' aria-current="page"':''} onclick="go('obra','${o.id}','hoje');return false" title="${o.nome} · ${stTxt(o)} · ${o.status==='plan'?'em orçamento':o.progresso+'% executado'}${n?` · ${n} pendências`:''}"><span class="dot" style="background:${stDot(o)}" aria-hidden="true"></span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.nome}</span>${n?`<span class="count" aria-label="${n} pendências">${n}</span>`:`<small>${o.status==='plan'?'orçando':o.progresso+'%'}</small>`}</a>`; }).join('')}
     <button class="newbtn" onclick="openWizard(1)">${icon('plus')}Nova obra</button>
     <div class="sec">Protótipo</div>
-    <a class="nav" href="#" onclick="document.body.classList.toggle('notes');renderSide();return false">${icon('flask')}<span>Notas de validação: <b id="nt">${document.body.classList.contains('notes')?'ligadas':'desligadas'}</b></span><span class="toggle"></span></a>
-    <a class="nav ${state.view==='fluxos'?'on':''}" href="#fluxos" onclick="go('fluxos');return false">${icon('map')}Mapa de fluxos</a>
-    <div class="foot"><div class="av">RZ</div><div>Rizzi<br><span class="sm mut">Construtora RZ · Admin</span></div></div>`;
+    <a class="nav" href="#" role="switch" aria-checked="${document.body.classList.contains('notes')}" onclick="document.body.classList.toggle('notes');renderSide();return false">${icon('flask')}<span>Notas de validação</span><span class="toggle" aria-hidden="true"></span></a>
+    ${item('fluxos','map','Mapa de fluxos')}
+    <div class="fict">${icon('info',14)}<span>Dados fictícios. Nenhum botão compra ou envia nada.</span></div>
+    <div class="foot"><div class="av">RZ</div><div>Rizzi<br><span>Construtora RZ · Admin</span></div></div>`;
 }
 
 /* ===================== HOME: CHAT GLOBAL ===================== */
@@ -94,44 +217,120 @@ function renderHome(){
 /* ===================== HUB DE OBRAS ===================== */
 const prazoPill = o => `<span class="pill ${o.status==='plan'?'gray':o.atraso>0?'bad':'ok'}">${prazoTxt(o)}</span>`;
 function renderHub(){
-  return `<div class="top"><h1>Obras</h1><span class="sp"></span><button class="btn amb" onclick="openWizard(1)">${icon('plus',15)}Nova obra</button></div>
+  return `<div class="top"><h1>Todas as obras</h1><span class="sp"></span><button class="btn amb" onclick="openWizard(1)">${icon('plus',15)}Nova obra</button></div>
   <div class="page">
     ${val('Que informação o gerente precisa ver em cada cartão para decidir onde ir primeiro? (prazo, dinheiro, estoque, equipe?)')}
     <div class="grid g3">${OBRAS.map(o=>{
-      const plan=o.status==='plan', pctB = plan?0:Math.round(o.gasto/o.budget*100);
-      return `<div class="card wscard" onclick="go('obra','${o.id}','${plan?'chat':'overview'}')">
-        <div class="row" style="align-items:flex-start"><span style="width:8px;height:8px;border-radius:50%;background:${o.cor};margin-top:9px;flex:none"></span><span class="name">${o.nome}</span><span class="sp"></span>${prazoPill(o)}</div>
-        <div class="mut sm" style="margin:4px 0 18px 18px">${o.tipo} · ${o.local}</div>
+      const plan=o.status==='plan', pctB = plan?0:Math.round(o.gasto/o.budget*100), pend=pendObra(o);
+      return `<div class="card wscard" onclick="go('obra','${o.id}','hoje')">
+        <div class="row" style="align-items:flex-start;flex-wrap:nowrap"><span style="width:8px;height:8px;border-radius:50%;background:${stDot(o)};margin-top:8px;flex:none" title="${stTxt(o)}"></span><span class="name" style="min-width:0">${o.nome}</span></div>
+        <div class="mut sm" style="margin:2px 0 8px 16px">${o.tipo} · ${o.local}</div>
+        <div style="margin:0 0 16px 16px">${prazoPill(o)}</div>
+        ${pend.length?`<div class="sm" style="margin:0 0 16px;color:var(--amberInk);font-weight:500">Pede você: ${resumoPend(pend).join(' · ')}</div>`:''}
         <div class="row sm"><span>${plan?'Orçamento sendo montado no chat':`Obra ${o.progresso}% · fase <b>${o.fase}</b>`}</span></div>
-        <div class="bar" style="margin:8px 0 18px"><i style="width:${o.progresso}%;background:${o.cor}"></i></div>
-        <div class="grid g2 sm" style="gap:12px 18px"><div><div class="mut">${plan?'Orçamento-alvo':'Orçamento'}</div><b>${brl(o.budget)}</b></div><div><div class="mut">Gasto</div><b>${plan?'—':brl(o.gasto)}</b> ${plan?'':`<span class="mut">(${pctB}%)</span>`}</div>
-        <div><div class="mut">Prazo</div><b>${o.prazo}</b></div><div><div class="mut">Previsão</div><b style="color:${o.atraso>0?'var(--red)':o.atraso<0?'var(--green)':'inherit'}">${o.previsao}</b></div></div>
+        <div class="bar" style="margin:8px 0 16px"><i style="width:${o.progresso}%;background:${o.cor}"></i></div>
+        <div class="grid g2 sm" style="gap:12px 16px"><div><div class="mut">${plan?'Orçamento-alvo':'Orçamento'}</div><b>${brl(o.budget)}</b></div><div><div class="mut">Gasto</div><b>${plan?'—':brl(o.gasto)}</b> ${plan?'':`<span class="mut">(${pctB}%)</span>`}</div>
+        <div><div class="mut">Prazo</div><b>${o.prazo}</b></div><div><div class="mut">Previsão</div><b style="color:${o.atraso>0?'var(--redInk)':o.atraso<0?'var(--greenInk)':'inherit'}">${o.previsao}</b></div></div>
       </div>`}).join('')}</div>
   </div>`;
 }
 
 /* ===================== OBRA ===================== */
-const TABS = [['chat','message','Chat'],['overview','chart','Orçamento'],['componentes','bricks','Insumos e compras'],['kanban','package','Pedidos'],['inventario','archive','Almoxarifado'],['equipe','users','Equipe'],['prazos','clock','Prazos']];
+/* Telas da obra: [chave, ícone, rótulo]. Feature nova entra com TABS.push([...]) + TAB_FNS.chave = fn e se encaixa
+   numa aba com GRUPOS[i].telas.push([chave, rótulo]). As setas chamam pelo nome na hora para que uma feature possa
+   redefinir a função original (ex.: tabEquipe = function(o){...}). */
+const TABS = [['hoje','checkCircle','Hoje'],['componentes','bricks','Falta comprar'],['kanban','package','Pedidos'],['inventario','archive','Almoxarifado'],['entreobras','swap','Entre obras'],['overview','chart','Orçamento'],['prazos','clock','Cronograma'],['equipe','users','Equipe']];
+const TAB_FNS = {hoje:o=>tabHoje(o), overview:o=>tabOverview(o), componentes:o=>tabComp(o), kanban:o=>tabKanban(o), inventario:o=>tabInv(o), entreobras:o=>tabEntreObras(o), equipe:o=>tabEquipe(o), prazos:o=>tabPrazos(o)};
 
-/* Abas da obra. Funcionalidade nova entra com TABS.push([...]) e TAB_FNS.chave = fn, num arquivo
-   próprio em js/features. As setas chamam pelo nome na hora para que um feature possa redefinir
-   a função original (ex.: tabEquipe = function(o){...}). */
-const TAB_FNS = {chat:o=>tabChat(o), overview:o=>tabOverview(o), componentes:o=>tabComp(o), kanban:o=>tabKanban(o), inventario:o=>tabInv(o), equipe:o=>tabEquipe(o), prazos:o=>tabPrazos(o)};
+/* Abas de 1º nível: 4, cada uma com o contador do que pede ação e as telas como segmento de 2º nível.
+   A 1ª tela de cada aba é a que abre por padrão. */
+const GRUPOS = [
+  {k:'hoje',        label:'Hoje',        icon:'checkCircle', telas:[['hoje','Hoje']],                                                                   pend:o=>pendHoje(o)},
+  {k:'suprimentos', label:'Suprimentos', icon:'package',     telas:[['componentes','Falta comprar'],['kanban','Pedidos'],['inventario','Almoxarifado'],['entreobras','Entre obras']], pend:o=>pendSuprimentos(o)},
+  {k:'custos',      label:'Custos',      icon:'chart',       telas:[['overview','Orçamento'],['medicoes','Medições']],                             pend:o=>pendCustos(o)},
+  {k:'execucao',    label:'Execução',    icon:'clock',       telas:[['prazos','Cronograma'],['diario','Diário'],['equipe','Equipe']],              pend:o=>pendExecucao(o)},
+];
+const grupoDe = tela => GRUPOS.find(g=>g.telas.some(t=>t[0]===tela));
 
-/* Obra em orçamento (Galpão): só o chat existe; as outras abas esperam o orçamento fechar. */
+/* Contadores = o que pede ação nesta obra (não o total de itens). Cada função devolve [{tipo, txt, tela}];
+   o contador da aba é o tamanho da lista e o do segmento conta os itens com aquela tela. Só lê dados existentes:
+     Hoje ........ propostas do agente pendentes para esta obra (pendentes(obraId), proativo.js)
+     Suprimentos . pedidos recebidos com a NF ainda por conferir (última coluna, !conf)
+                   + insumos que ainda faltam comprar (contaDe(...).comprar > 0, o critério da faixa do ciclo)
+     Custos ...... contratos com pago acima do executado, fora o adiantamento previsto em contrato
+                   e o pagamento já segurado (CONTRATOS, gHold, gestao.js)
+     Execução .... RDO aguardando confirmação do áudio (RDO) + documentação vencida da equipe, ex. ASO (EQ.docs 'bad') */
+const temDados = o => o && o.status!=='plan' && DADOS[o.id];
+function pendHoje(o){ return typeof pendentes==='function' ? pendentes(o.id).map(p=>({tipo:'proposta', txt:p.titulo||p.tit||'proposta do agente', tela:'hoje'})) : []; }
+function pendSuprimentos(o){
+  if(!temDados(o)) return [];
+  const d=dados(o.id), ult=KCOLS.length-1;
+  const nf=d.lotes.filter(l=>l.col===ult && !l.conf).map(l=>({tipo:'nf', txt:`conferir NF do ${l.id}`, tela:'kanban'}));
+  const falta=d.inv.filter(i=>contaDe(o.id,i.id).comprar>0)          // mesmo critério da faixa do ciclo
+    .map(i=>({tipo:'falta', txt:`${i.nome}: falta comprar`, tela:'componentes'}));
+  return [...nf, ...falta];
+}
+function pendCustos(o){
+  if(!temDados(o) || typeof CONTRATOS==='undefined') return [];
+  return (CONTRATOS[o.id]||[]).filter(c=>!c.orc && !c.nota && gPago(c)>gExeR(c) && !(typeof gHold==='function' && gHold(o.id,c))).map(c=>({tipo:'segurar', txt:`${c.emp}: pago acima do executado`, tela:'medicoes'}));
+}
+function pendExecucao(o){
+  if(!temDados(o)) return [];
+  const rdo = typeof RDO!=='undefined' ? (RDO[o.id]||[]).filter(r=>r.aguarda).map(r=>({tipo:'rdo', txt:`RDO de ${r.d} aguardando o áudio`, tela:'diario'})) : [];
+  const docs = typeof EQ!=='undefined' && EQ[o.id] ? (EQ[o.id].docs||[]).filter(x=>x[2]==='bad').map(x=>({tipo:'doc', txt:`${x[0]}: ${x[1]}`, tela:'equipe'})) : [];
+  return [...rdo, ...docs];
+}
+const pendObra = o => GRUPOS.flatMap(g=>g.pend(o));
+const TIPO_PEND = {proposta:['proposta do agente','propostas do agente'], nf:['NF a conferir','NFs a conferir'], falta:['insumo a comprar','insumos a comprar'],
+  segurar:['pagamento a segurar','pagamentos a segurar'], rdo:['RDO aguardando','RDOs aguardando'], doc:['documento vencido','documentos vencidos']};
+function resumoPend(lista){
+  const n={}; lista.forEach(p=>n[p.tipo]=(n[p.tipo]||0)+1);
+  return Object.entries(n).map(([t,k])=>`${k} ${(TIPO_PEND[t]||[t,t])[k>1?1:0]}`);
+}
+
+/* Hoje: o que pede você nesta obra. Esqueleto da base; a etapa 2 preenche (propostas, 3 números). */
+function tabHoje(o){
+  if(o.status==='plan') return `<div class="card vazio">${icon('message',26)}<h2>O orçamento do ${o.nome} está no painel do agente</h2>
+    <p class="mut">O agente espera as suas respostas para fechar o orçamento. Quando você aprovar, ele cria as etapas, os insumos, os pedidos e o cronograma, e as outras abas abrem.</p>
+    ${PAINEL.aberto?'':botao('Abrir o painel do agente','abrirPainel(true)',{pri:true,icone:'message'})}</div>`;
+  const linhas = GRUPOS.filter(g=>g.k!=='hoje').map(g=>{ const p=g.pend(o);
+    return `<div class="ld"><div class="ld-prazo t-${p.length?'pede':'ok'}">${p.length?p.length+' pendente'+(p.length>1?'s':''):'em dia'}</div>
+      <div class="ld-txt"><div class="ld-tit">${g.label}</div><div class="ld-conta">${p.length?resumoPend(p).join(' · '):'nada pede você agora'}</div></div><div class="ld-valor"></div>
+      <div class="ld-acts">${botao('Abrir '+g.label.toLowerCase(), `go('obra','${o.id}','${(p[0]||{}).tela||g.telas[0][0]}')`, {sm:true})}</div></div>`; });
+  const props = pendHoje(o);
+  return `<div class="row" style="margin-bottom:12px"><h2 class="sectit" style="margin:0">O que pede você nesta obra</h2><span class="sp"></span>
+      ${props.length?`<a class="link" href="#aprovacoes" onclick="go('aprovacoes');return false">${props.length} ${props.length>1?'propostas':'proposta'} do agente em Aprovações ${icon('arrowRight',13)}</a>`:''}</div>
+    ${listaDecisoes(linhas)}`;
+}
+/* Entre obras: as transferências desta obra (cedidas e recebidas), com a faixa do ciclo. */
+function tabEntreObras(o){ return `${cicloFaixa(o.id)}${estoqueCorpo(o.id, 3)}`; }
+
+/* Obra em orçamento (Galpão): só Hoje e o painel do agente; as outras telas esperam o orçamento fechar. */
 function emOrcamento(o){
-  const nome=(TABS.find(t=>t[0]===state.tab)||[,,'Esta aba'])[2];
-  return `<div class="card vazio">${icon('hourglass',26)}<h3>${nome}: disponível depois do orçamento</h3>
+  const nome=(TABS.find(t=>t[0]===state.tab)||[,,'Esta tela'])[2];
+  return `<div class="card vazio">${icon('hourglass',26)}<h2>${nome}: disponível depois do orçamento</h2>
     <p class="mut">O ${o.nome} ainda está em orçamento. Quando você aprovar o orçamento no chat, o agente cria as etapas, os insumos, os pedidos e o cronograma desta obra.</p>
     <button class="btn amb" onclick="go('obra','${o.id}','chat')">${icon('message',15)}Continuar o orçamento no chat</button></div>`;
 }
+function statusObra(o){
+  if(o.status==='plan') return `${prazoPill(o)}<span>Orçamento-alvo <b>${brl(o.budget)}</b></span><span class="sepr">·</span><span>${o.tipo}</span><span class="sepr">·</span><span>${o.local}</span>`;
+  return `<span><b>${o.fase} ${o.progresso}%</b></span><span class="sepr">·</span><span>entrega prevista <b>${o.previsao}</b> (contrato ${o.prazo})</span>${prazoPill(o)}<span class="sepr">·</span><span>${o.local}</span>`;
+}
 function renderObra(){
-  const o = obra();
-  const body = (o.status==='plan' && state.tab!=='chat') ? emOrcamento(o) : (TAB_FNS[state.tab]||TAB_FNS.chat)(o);
-  return `<div class="top" style="align-items:flex-end"><div><div class="crumb" style="margin-bottom:4px"><a href="#hub" onclick="go('hub');return false">Obras</a> / ${o.local}</div><h1>${o.nome}</h1></div><span style="margin-bottom:5px">${prazoPill(o)}</span><span class="sp"></span>
-      <span class="mut sm" style="margin-bottom:6px">${o.status==='plan'?'Em orçamento':`Fase: <b style="color:var(--ink)">${o.fase}</b> · ${o.progresso}%`}</span></div>
-    <div class="tabs">${TABS.map(([k,ic,l])=>`<a class="tab ${state.tab===k?'on':''}" href="#" onclick="go('obra','${o.id}','${k}');return false">${icon(ic,15)}${l}</a>`).join('')}</div>
-    ${state.tab==='chat'?body:`<div class="page">${body}</div>`}`;
+  const o=obra(), plan=o.status==='plan', g=grupoDe(state.tab);
+  const body = (plan && state.tab!=='hoje') ? emOrcamento(o) : (TAB_FNS[state.tab]||TAB_FNS.hoje)(o);
+  const abas = GRUPOS.map(G=>{ const on=g===G, dis=plan&&G.k!=='hoje', n=dis?0:G.pend(o).length, alvo=G.telas[0][0];
+    return `<a class="tab ${on?'on':''}" href="#obra/${o.id}/${alvo}"${on?' aria-current="page"':''}${dis?' aria-disabled="true" title="Abre quando o orçamento for aprovado"':''} onclick="${dis?'':`go('obra','${o.id}','${alvo}');`}return false">${icon(G.icon,15)}${G.label}${n?`<span class="count" aria-label="${n} pendências">${n}</span>`:''}</a>`; }).join('');
+  const telas = g ? g.telas.filter(t=>TAB_FNS[t[0]]) : [];
+  const pg = g ? g.pend(o) : [];
+  const seg = telas.length>1 ? `<div class="subnav">${segmento(telas.map(([k,l])=>({k, label:l, n:pg.filter(p=>p.tela===k).length, onclick:`go('obra','${o.id}','${k}')`})), state.tab, {rotulo:g.label})}</div>` : '';
+  const titTela = state.tab==='hoje' ? '' : `<h2 class="sr-only">${(TABS.find(t=>t[0]===state.tab)||[,,''])[2]}</h2>`;   // h1 obra → h2 tela → h3 cartões
+  return `<div class="top obra-top"><div style="min-width:0"><div class="crumb" style="margin-bottom:4px"><a href="#hub" onclick="go('hub');return false">Todas as obras</a> / ${o.nome}</div>
+      <h1><span style="width:10px;height:10px;border-radius:50%;background:${stDot(o)};flex:none" title="${stTxt(o)}" aria-hidden="true"></span>${o.nome}</h1>
+      <div class="obra-status">${statusObra(o)}</div></div><span class="sp"></span>
+      <button class="btn" id="btnPainel" aria-expanded="${PAINEL.aberto}" aria-controls="painel" title="Atalho: /" onclick="alternarPainel()">${icon('message',15)}${PAINEL.aberto?'Fechar o agente':'Perguntar ao agente'}</button></div>
+    <nav class="tabs" aria-label="Seções da obra">${abas}</nav>
+    <div class="page">${titTela}${seg}${body}</div>`;
 }
 
 /* Ações que o chat da obra propõe (todas registram e podem ser desfeitas). */
@@ -154,22 +353,26 @@ function exigirPalete(){
   render();
 }
 
+/* Painel do agente da obra (o antigo chat da obra): recolhível, à direita, disponível em todas as abas.
+   Abre pelo botão do cabeçalho, pelo atalho / e pela rota #obra/<id>/chat. As sessões ficam num seletor. */
 function tabChat(o){
   const C = CHATS[o.id] || CHATS['vila-nova'];
-  return `<div class="chatwrap">
-    <div class="sessions"><button class="btn" style="width:100%;margin-bottom:12px;justify-content:center" onclick="toast('(protótipo) abriria uma sessão nova nesta obra')">${icon('plus',15)}Nova sessão</button>
-      ${C.sess.map((s,i)=>`<div class="sess ${i===0?'on':''}"><b>${s[0]}</b><span>${s[1]}</span></div>`).join('')}
-      <div class="sm mut" style="margin-top:18px;padding:0 10px;line-height:1.5">Cada obra tem suas sessões e o histórico fica separado. O agente só enxerga os dados desta obra.</div></div>
-    <div class="chat">
-      <div class="msgs">${val('Sessões separadas por assunto ("atraso do aço", "concretagem"): é assim que eles pensam, ou preferem um chat único por obra?')}${C.msgs()}</div>
-      <div class="composer"><div><span class="attach">${icon('building',13)}Contexto: ${o.nome}</span></div><textarea placeholder="Pergunte sobre esta obra…"></textarea>
-      <div class="row"><button class="btn sm" onclick="toast('(protótipo) anexar projeto, NF ou foto')">${icon('clip',14)}Anexar</button><span class="sp"></span><button class="btn amb" onclick="toast('(protótipo) enviar')">Enviar ${icon('arrowUp',15)}</button></div></div>
-    </div></div>`;
+  return `<div class="painel-top"><div style="min-width:0;flex:1"><h2>Agente · ${o.nome}</h2>
+      <div class="sess-sel"><label>Sessão <select onchange="toast('(protótipo) cada sessão guarda o próprio histórico')">${C.sess.map((s,i)=>`<option ${i===0?'selected':''}>${s[0]} · ${s[1]}</option>`).join('')}</select></label></div></div>
+      <button class="iconbtn" onclick="toast('(protótipo) abriria uma sessão nova nesta obra')" aria-label="Nova sessão" title="Nova sessão">${icon('plus',18)}</button>
+      <button class="iconbtn" onclick="fecharPainel()" aria-label="Fechar o painel do agente" title="Fechar (Esc)">${icon('x',18)}</button></div>
+    <div class="msgs">${val('Sessões separadas por assunto ("atraso do aço", "concretagem"): é assim que eles pensam, ou preferem um chat único por obra?')}${C.msgs()}</div>
+    <div class="composer"><div><span class="attach">${icon('building',13)}Contexto: ${o.nome} · só os dados desta obra</span></div><textarea aria-label="Pergunte sobre esta obra" placeholder="Pergunte sobre esta obra…"></textarea>
+      <div class="row"><button class="btn sm" onclick="toast('(protótipo) anexar projeto, NF ou foto')">${icon('clip',14)}Anexar</button><span class="sp"></span><button class="btn amb sm" onclick="toast('(protótipo) enviar')">Enviar ${icon('arrowUp',14)}</button></div></div>`;
 }
+function manterRolagem(fn){ const m=$('main'), y=m.scrollTop; fn(); m.scrollTop=y; }
+function abrirPainel(focar){ PAINEL.aberto=true; manterRolagem(render); if(focar){ const t=$('painel').querySelector('textarea'); if(t) t.focus(); } }
+function fecharPainel(){ PAINEL.aberto=false; manterRolagem(render); const b=$('btnPainel'); if(b) b.focus(); }
+function alternarPainel(){ PAINEL.aberto ? fecharPainel() : abrirPainel(true); }
 const CHATS = {
   'vila-nova':{sess:[['Atraso do aço (Gerdau)','hoje'],['Concretagem da laje × chuva','hoje'],['Quebra do bloco','27/10'],['Medição da Equipe Silva','26/10'],['Orçamento inicial','03/03']],
     msgs:()=>{ const aco=LOTES.find(l=>l.id==='PED-0167'), conc=LOTES.find(l=>l.id==='PED-0166'), blo=LOTES.find(l=>l.id==='PED-0162');
-      const i=INV.find(x=>x.id==='aco'), sal=i.ent-i.sai, cam=aCaminho('vila-nova','aco'), f=faltaDe('vila-nova','aco');
+      const i=INV.find(x=>x.id==='aco'), sal=i.ent-i.sai, k=contaDe('vila-nova','aco'), cam=k.aCaminho, f=k.faltaSemTransf+k.cotando;   // falta antes de aprovar: inclui o que está em cotação (PED-0167)
       return `
     ${meMsg('a Gerdau confirmou data para o aço?')}
     ${aiMsg(['pedido PED-0158','e-mail do fornecedor','almoxarifado'], `Ainda não. O PED-0158 (3.200 kg de aço cortado e dobrado, R$ 25.280) estava previsto para 19/10 e está <b>9 dias atrasado</b>. Último contato em 24/10: "previsão sem data".<br><br>
@@ -245,35 +448,258 @@ function tabOverview(o){
   </div>`;
 }
 
+/* ===================== SUPRIMENTOS: ciclo, conta e ações (Dev Suprimentos) =====================
+   Faixa do ciclo no topo de Falta comprar, Pedidos, Almoxarifado, Entre obras e #estoque:
+   Falta → Em cotação → A caminho → Conferir NF → Sobra, com contagem; clicar leva à tela e ao filtro.
+   A conta de cada insumo vem de contaDe (data.js) e é sempre desenhada com linhaConta. */
+/* CSS de Suprimentos (tokens da base; um nível de caixa; sem faixa lateral; nada < 12 px). */
+addCSS(`
+.page:has(> .ciclo){overflow-x:clip}
+.ciclo{position:sticky;top:0;z-index:4;display:flex;align-items:stretch;gap:var(--s1);margin:0 calc(-1*var(--s2)) var(--s4);padding:var(--s2);background:var(--bg);border-bottom:1px solid var(--line)}
+.ciclo-et{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:var(--s2);padding:6px 10px;border:1px solid transparent;border-radius:8px;background:none;text-align:left;transition:background-color .12s var(--ease),transform .12s var(--ease)}
+.ciclo-et:active{transform:scale(.97)}
+.ciclo-et.on{background:#fff;border-color:var(--line);box-shadow:var(--shadow)}
+.ciclo-n{font:600 var(--t-bloco)/1 var(--serif);font-variant-numeric:tabular-nums;color:var(--muted);min-width:1.1em}
+.ciclo-n.t-pede{color:var(--amberInk)} .ciclo-n.t-perda{color:var(--redInk)} .ciclo-n.t-caminho{color:var(--blueInk)}
+.ciclo-l{display:flex;flex-direction:column;min-width:0;font-weight:600;font-size:var(--t-body);line-height:1.25;color:var(--ink)}
+.ciclo-l small{font-weight:400;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ciclo-l small.t-perda{color:var(--redInk);font-weight:500}
+.ciclo-seta{display:flex;align-items:center;color:var(--muted);flex:none}
+@media (hover:hover){ .ciclo-et:not(.on):hover{background:rgba(255,255,255,.6)} }
+.sup-filtro{display:flex;align-items:center;gap:var(--s2);margin:0 0 var(--s4);font-size:var(--t-meta);color:var(--ink2)}
+.sup-filtro .link{border:0;background:none;padding:0;cursor:pointer;margin-left:var(--s1);text-decoration:underline;text-underline-offset:3px}
+.sup-cab{display:flex;align-items:center;flex-wrap:wrap;gap:var(--s2) var(--s3);margin:0 0 var(--s4)}
+.sup-cab .sup-h{margin:0}
+.sup-frase{margin:0;font-size:var(--t-sec);margin-right:auto;max-width:68ch}
+.sup-bloco{margin:0 0 var(--s5)}
+.sup-h{font:600 var(--t-sec)/1.3 var(--serif);letter-spacing:-.01em;margin:0 0 var(--s3)}
+.sup-h .mut{font:400 var(--t-meta) var(--sans);letter-spacing:0}
+.sup-sub{margin:calc(-1*var(--s2)) 0 var(--s3);font-size:var(--t-meta);color:var(--muted);max-width:68ch}
+.ld-conta .lc{font-size:var(--t-meta);line-height:1.5}
+.sup-tab td{vertical-align:top}
+.sup-tab td,.sup-tab th{padding:10px 12px}
+.sup-tab .lc{font-size:var(--t-meta);line-height:1.45}
+.sup-tab .lc-eq{gap:2px 6px}
+.sup-tab th.ck,.sup-tab td.ck{width:44px;padding-right:0}
+.sup-tab td.ck input{width:16px;height:16px;margin:3px 0 0;accent-color:var(--accent)}
+.sup-tab tr.click{cursor:pointer}
+@media (hover:hover){ .sup-tab tr.click:hover td{background:#fafbfb} }
+.sup-tab td:first-child:not(.ck),.sup-tab td.ck+td{min-width:200px}
+.sup-acao{width:1%;white-space:nowrap;text-align:right}
+.sup-acao .sm{margin-top:4px}
+.sup-tab .t-perda,.kc .t-perda,.sup-bloco .t-perda{color:var(--redInk);font-weight:600}
+.sup-tab .t-pede{color:var(--amberInk);font-weight:600}
+.sup-pe-bloco{display:flex;align-items:center;gap:var(--s3);padding:12px 20px;border-top:1px solid var(--line2);background:var(--sunk)}
+.sup-pe-bloco .sm{max-width:60ch}
+.sup-vazio{display:flex;align-items:center;gap:var(--s2);color:var(--greenInk)}
+.sup-cob{margin:0 0 var(--s5)}
+.sup-cob>summary{display:flex;align-items:center;gap:var(--s2);cursor:pointer;list-style:none;font:600 var(--t-sec)/1.3 var(--serif);letter-spacing:-.01em;margin:0 0 var(--s3);width:max-content;max-width:100%}
+.sup-cob>summary::-webkit-details-marker{display:none}
+.sup-cob>summary .mut{font:400 var(--t-meta) var(--sans);letter-spacing:0}
+.sup-cob .chev,.kb-hist .chev{color:var(--muted);transition:transform .15s var(--ease)}
+.sup-cob[open]>summary .chev,.kb-hist[open]>summary .chev{transform:rotate(90deg)}
+.sup-kpis{margin:0 0 var(--s5)}
+.sup-nota{margin-top:var(--s3);max-width:62ch}
+.sup-kb{gap:var(--s2);align-items:start}
+.sup-kb .col{min-height:0}
+.sup-kb .col h3{margin:0 0 10px;padding:4px 2px 8px;border-bottom:2px solid var(--line);font:600 var(--t-meta)/1.3 var(--sans);letter-spacing:0;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.sup-kb .col h3 small{color:var(--muted);font-weight:400;margin-left:auto;font-size:var(--t-meta)}
+.sup-kb .kc{display:flex;flex-direction:column;gap:2px}
+.kc-top{display:flex;align-items:center;gap:4px;flex-wrap:wrap;color:var(--muted);margin-bottom:2px}
+.kc-id{margin-right:auto;font-variant-numeric:tabular-nums}
+.kc-q{color:var(--ink2)}
+.kc-ef,.kc-lig{color:var(--muted)}
+.kc-lig{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.kc-pe{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-top:8px}
+.kc-v{margin:0!important;color:var(--ink);font-weight:600!important;font-variant-numeric:tabular-nums}
+.kc-pe .btn{white-space:normal;text-align:left;padding:4px 9px;font-size:var(--t-meta)}
+.kb-vazio{margin:0;padding:6px 4px;font-size:var(--t-meta);color:var(--muted)}
+.kb-hist{margin-top:var(--s2)}
+.kb-hist>summary{display:flex;align-items:center;gap:4px;cursor:pointer;list-style:none;font-size:var(--t-meta);color:var(--ink2);font-weight:500;padding:4px 2px}
+.kb-hist>summary::-webkit-details-marker{display:none}
+.kb-hist[open]>summary{margin-bottom:var(--s2)}
+.cap{margin:var(--s2) 0 0}
+.cap .split{height:12px;border-radius:4px;margin-bottom:6px}
+.cap.mini .split{height:8px;max-width:360px}
+.trf-lista{padding:0}
+.trf-l{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:var(--s4);align-items:center;padding:14px 20px;border-top:1px solid var(--line2)}
+.trf-l:first-child{border-top:0}
+.trf-txt{min-width:0}
+.trf-pe{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);align-items:start}
+.trf-ac{margin:0 0 8px;max-width:68ch}
+.trf-cmp td:first-child{white-space:nowrap}
+.sup-como{margin-top:var(--s3);font-size:var(--t-meta);color:var(--ink2)}
+.sup-como summary{display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:var(--muted);font-weight:500}
+.sup-como p{margin:6px 0 0;max-width:68ch}
+.sup-dconta{margin:var(--s4) 0 0;padding:12px 16px;background:#fff;border:1px solid var(--line);border-radius:8px}
+.modal .sup-dconta{background:var(--sunk);border-color:var(--line2)}
+.sup-dh{font:600 var(--t-sec)/1.3 var(--serif);letter-spacing:-.01em;margin:var(--s5) 0 var(--s3)}
+.sup-nota-ag{margin:var(--s4) 0;font-size:var(--t-meta);padding:12px 16px}
+.sup-depois{margin:var(--s3) 0 0;color:var(--ink2)}
+.sup-pq{display:flex;gap:var(--s2);align-items:flex-start;margin:var(--s3) 0 0;color:var(--ink2);max-width:68ch}
+.sup-pq .ic{color:var(--pine);margin-top:3px}
+.sup-forn{padding:0}
+.sup-fl{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:var(--s3);align-items:center;padding:12px 16px;border-top:1px solid var(--line2)}
+.sup-fl:first-child{border-top:0}
+.sup-leg .row{margin:6px 0}
+.sup-leg i{width:9px;height:9px;border-radius:3px;flex:none}
+.sup-pct{width:42px;text-align:right}
+.drawer .pane:has(> .sup-pe){padding-bottom:0}
+.sup-pe{position:sticky;bottom:0;z-index:2;display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap;margin:var(--s5) -32px 0;padding:14px 32px 18px;background:#fff;border-top:1px solid var(--line)}
+@media (prefers-reduced-motion:reduce){ .ciclo-et:active{transform:none} .sup-cob .chev,.kb-hist .chev{transition:none} }
+`);
 function best(c){ return c.forn.reduce((a,b)=>a.p<b.p?a:b); }
-/* Quanto falta comprar de um insumo: falta do almoxarifado (precisa − saldo − a caminho) menos o que vem
-   por transferência sugerida. Insumo que ainda não está no almoxarifado: projeto − pedidos aprovados. */
-function compraDe(obraId, c){
-  const d=dados(obraId), invId=c.inv||c.id, i=d.inv.find(x=>x.id===invId);
-  const pedido=d.lotes.filter(l=>l.inv===invId&&l.col>=1).reduce((a,l)=>a+(l.receb??l.medido??l.qn??0),0);
-  const falta=i? faltaDe(obraId,invId) : Math.max(0,c.qtd-pedido);
-  const tr=TRANSF.find(t=>t.inv===invId&&t.destino===obraId&&t.sug>0), trf=tr?Math.min(tr.sug,falta):0;
-  return {invId, comprado:i?i.ent+aCaminho(obraId,invId):pedido, falta, trf, compra:falta-trf, cot:emCotacao(obraId,invId)};
+const ULT = () => KCOLS.length-1;
+const curtaObra = id => (NOME_OBRA[id]||id).replace('Reforma ','').replace('Casa ','');
+const obrasSup = () => OBRAS.filter(o=>temDados(o)).map(o=>o.id);
+function insumosDe(ob){ const d=dados(ob); return [...new Set([...d.comp.map(c=>c.inv||c.id), ...d.inv.map(i=>i.id)])]; }
+const SUP = {filtro:null, hash:'', feito:{}};          // filtro da faixa do ciclo (vale só na tela em que foi ligado) e aprovações feitas aqui
+const ETAPA_TELA = {falta:'componentes', cotacao:'kanban', caminho:'kanban', nf:'kanban', sobra:'entreobras'};
+const ETAPA_NOME = {falta:'Falta', cotacao:'Em cotação', caminho:'A caminho', nf:'Conferir NF', sobra:'Sobra'};
+const filtroSup = () => SUP.filtro && SUP.hash===location.hash ? SUP.filtro : null;
+document.addEventListener('rendered', ()=>{ if(SUP.filtro && location.hash!==SUP.hash) SUP.filtro=null; });
+document.addEventListener('click', e=>{ if(e.target.closest && e.target.closest('.docref')) SUP.filtro=null; }, true);   // link de documento mostra tudo
+function cicloDe(ids){
+  const r={falta:[], cotacao:[], caminho:[], late:0, nf:[], sobra:[]}, ult=ULT();
+  ids.forEach(ob=>{
+    insumosDe(ob).forEach(inv=>{ if(contaDe(ob,inv).comprar>0) r.falta.push({ob,inv}); });
+    dados(ob).lotes.forEach(l=>{ if(l.conf) return; const x={ob,l};
+      if(l.col===0) r.cotacao.push(x); else if(l.col<ult){ r.caminho.push(x); if(l.late) r.late++; } else r.nf.push(x); });
+  });
+  r.sobra=TRANSF.filter(t=>t.sug>0 && (ids.includes(t.origem)||ids.includes(t.destino)));
+  return r;
 }
+function cicloFaixa(ob){
+  const c=cicloDe(ob?[ob]:obrasSup()), f=filtroSup(), n=k=>c[k].length;
+  const et=[
+    ['falta', 'sem pedido', 'pede'],
+    ['cotacao', 'para aprovar', 'pede'],
+    ['caminho', c.late?`${c.late} atrasado${c.late>1?'s':''}`:'no prazo', c.late?'perda':'caminho'],
+    ['nf', n('nf')?'chegou na obra':'nada chegando', 'pede'],
+    ['sobra', 'para outra obra', 'caminho'],
+  ];
+  return `<nav class="ciclo" aria-label="Ciclo de suprimentos">${et.map(([k,s,tom],i)=>{ const on=f===k, q=n(k);
+    return `${i?`<span class="ciclo-seta" aria-hidden="true">${icon('arrowRight',14)}</span>`:''}<button type="button" class="ciclo-et${on?' on':''}" aria-pressed="${on}" onclick="irEtapa(${ob?`'${ob}'`:'null'},'${k}')"><span class="ciclo-n${q?' t-'+tom:''}">${q}</span><span class="ciclo-l">${ETAPA_NOME[k]}<small${k==='caminho'&&c.late?' class="t-perda"':''}>${s}</small></span></button>`; }).join('')}</nav>`;
+}
+function irEtapa(ob, k){
+  if(!ob){
+    if(k==='sobra'){ SUP.filtro=null; return state.view==='estoque' ? manterRolagem(render) : go('estoque'); }
+    const c=cicloDe(obrasSup()); ob=((c[k]||[])[0]||{}).ob||'vila-nova';
+  }
+  const tela=ETAPA_TELA[k], hash=`#obra/${ob}/${tela}`;
+  if(k==='sobra' || (SUP.filtro===k && SUP.hash===hash && location.hash===hash)) SUP.filtro=null;   // clicar de novo tira o filtro
+  else { SUP.filtro=k; SUP.hash=hash; }
+  if(location.hash===hash) manterRolagem(render); else go('obra', ob, tela);
+}
+function limparFiltro(){ SUP.filtro=null; manterRolagem(render); }
+const avisoFiltro = k => `<div class="sup-filtro" role="status">${icon('list',14)}Mostrando só <b>${ETAPA_NOME[k]}</b><button type="button" class="link" onclick="limparFiltro()">Mostrar tudo</button></div>`;
+
+/* Pedido: ações nomeadas pela consequência (nunca "Avançar"). Aprovar fica no lugar como "Aprovado 08:14 por Rizzi". */
+const PASSO = ['', 'Marcar como enviado', 'Saiu para entrega', 'Marcar como recebido'];
+const hhmm = () => new Date().toTimeString().slice(0,5);
+function aprovarLote(id){
+  const f=acharLote(id); if(!f) return; const l=f.l;
+  if(l.col!==0) return toast(`${l.id} já está em ${KCOLS[l.col].toLowerCase()}`);
+  const antes={col:l.col, eta:l.eta}; l.col=1; l.eta=ETA_COL[1];
+  registrar(`${l.id} · ${l.item}: ${KCOLS[0]} → ${KCOLS[1]} · ${brl(l.v)} · ${l.forn}`, {obra:f.ob});
+  const volta=()=>{ Object.assign(l,antes); delete SUP.feito[id]; };
+  SUP.feito[id]={feito:'Aprovado', hora:hhmm(), quem:'Rizzi', desfazer:`desfazerAprov('${id}')`, volta};
+  toastDesfazer(`${l.id} aprovado · ${brl(l.v)} · ${l.forn}`, volta);
+  manterRolagem(render);
+}
+function desfazerAprov(id){ const f=SUP.feito[id]; if(!f) return; f.volta(); registrar(`Desfez: aprovação do ${id}`); toast(`${id} voltou para Em cotação`); manterRolagem(render); }
+function passoLote(id){ const f=acharLote(id); if(!f) return; f.l.col===0 ? aprovarLote(id) : moverLote(id, Math.min(ULT(), f.l.col+1)); }
+function cobrarLote(id){
+  const f=acharLote(id); if(!f) return; const l=f.l;
+  registrar(`Lembrete criado: cobrar ${l.forn} (${l.id} · ${l.q} de ${l.item}) amanhã às 9h`, {obra:f.ob, origem:'agente'});
+  const e=LOG[0]; toastDesfazer(`Lembrete: cobrar ${l.forn} amanhã às 9h`, ()=>{ const k=LOG.indexOf(e); if(k>=0) LOG.splice(k,1); });
+}
+const abateNF = l => l.medido!=null && l.qn>l.medido ? Math.round((l.qn-l.medido)*l.v/l.qn) : 0;
+function botaoLote(l, op={}){
+  if(l.conf) return '';
+  const ult=ULT(), sm=op.sm!==false;
+  if(l.col===0) return botao(`Aprovar ${brl(l.v)}`, `aprovarLote('${l.id}')`, {sm, pri:op.pri});
+  if(l.col<ult) return botao(PASSO[l.col]||`Mover para ${KCOLS[l.col+1].toLowerCase()}`, `passoLote('${l.id}')`, {sm});
+  return botao('Conferir NF', `conferirLote('${l.id}')`, {sm, pri:op.pri!==false, icone:'file'});
+}
+
+/* Ação de um item do almoxarifado, na ordem em que pede você. A tabela mostra a 1ª; o drawer, a 1ª no rodapé. */
+function acoesItem(ob, invId){
+  const d=dados(ob), k=contaDe(ob,invId), ult=ULT(), i=k.item, r=[];
+  const nf=d.lotes.find(l=>l.inv===invId&&l.col===ult&&!l.conf);
+  const pal=i&&i.quebra && d.lotes.find(l=>l.inv===invId&&!l.conf&&l.palete===false);
+  const sob=TRANSF.find(t=>t.inv===invId&&t.origem===ob&&t.sug>0), c=d.comp.find(x=>(x.inv||x.id)===invId);
+  if(nf) r.push({label:'Conferir NF', onclick:`conferirLote('${nf.id}')`, doc:nf.id, txt:`${nf.id} chegou`});
+  if(pal) r.push({label:`Exigir palete no ${pal.id}`, onclick:`exigirPalete()`, doc:pal.id, txt:`quebra de ${i.quebra.real}%`});
+  if(k.cot) r.push({label:`Aprovar ${k.cot.id} · ${brl(k.cot.v)}`, onclick:`aprovarLote('${k.cot.id}')`, doc:k.cot.id, txt:`${k.cot.id} em cotação`});
+  if(k.transf) r.push({label:`Trazer ${num(k.transf)} da ${curtaObra(k.tr.origem)}`, onclick:`openTransfer('${invId}')`, txt:`${num(k.transf)} da ${curtaObra(k.tr.origem)}`});
+  if(k.comprar>0) r.push({label:`Comprar ${num(k.comprar)} ${k.un}`, onclick:c?`openCheckout(['${c.id}'],{obra:'${ob}'})`:`go('obra','${ob}','componentes')`, txt:`comprar ${num(k.comprar)} ${k.un}`});
+  if(sob) r.push({label:`Ceder ${num(sob.sug)} à ${curtaObra(sob.destino)}`, onclick:`openTransfer('${invId}')`, txt:`sobra ${num(sob.sug)} ${k.un}`});
+  return r;
+}
+/* Compatível com quem já lia compraDe/acaoInv (Cronograma, proativo.js): mesma conta de contaDe.
+   falta = o que não está no saldo, a caminho nem em cotação · trf = transferência sugerida · compra = o resto. */
+function compraDe(obraId, c){
+  const invId=c.inv||c.id, k=contaDe(obraId,invId);
+  return {invId, comprado:(k.item?k.item.ent:0)+k.aCaminho, falta:k.comprar+k.transf, trf:k.transf, compra:k.comprar, comprar:k.comprar, cot:k.cot, cotando:k.cotando, conta:k};   // compra e comprar já descontam a cotação
+}
+function acaoInv(o,i){ const a=acoesItem(o.id,i.id); return a.length ? a.map(x=>pill(/Conferir|Exigir/.test(x.label)?'perda':/Trazer|Ceder/.test(x.label)?'caminho':'pede', x.txt)).join(' ') : pill('ok', i.obs||'suficiente'); }
+const diasTxt = d => d==null ? '' : d<=0 ? 'acabou' : `${d} d`;
+function prazoItem(ob, invId){
+  const i=dados(ob).inv.find(x=>x.id===invId), dd=duraDias(i);
+  if(dd==null) return {prazo:'aprovar', tom:'pede', dias:null};
+  return {prazo: dd<=0?'acabou':/\d\/\d/.test(i.cob)?`acaba ${i.cob.match(/\d{1,2}\/\d{1,2}/)[0]}`:`acaba em ${dd} d`, tom: dd<=7?'perda':'pede', dias:dd};
+}
+const porDias = (a,b) => (a??1e9)-(b??1e9);
+
+/* Falta comprar: 1º as cotações que esperam você (um clique), depois o que não tem pedido nenhum, e o coberto recolhido. */
 const SEL = {};
-function selComp(obraId){ if(!SEL[obraId]) SEL[obraId]=new Set(dados(obraId).comp.filter(c=>compraDe(obraId,c).compra>0).map(c=>c.id)); return SEL[obraId]; }
-function toggleComp(obraId,id,on){ const s=selComp(obraId); on?s.add(id):s.delete(id); const b=$('btnPedido'); if(b) b.innerHTML=`${icon('cart',15)}Gerar pedido de compra (${s.size})`; }
-function pedirSel(obraId){ const s=[...selComp(obraId)]; if(!s.length) return toast('Marque pelo menos um insumo'); openCheckout(s,{obra:obraId}); }
+function selComp(obraId){ if(!SEL[obraId]) SEL[obraId]=new Set(dados(obraId).comp.filter(c=>contaDe(obraId,c.inv||c.id).comprar>0).map(c=>c.id)); return SEL[obraId]; }
+function selValida(obraId){ return [...selComp(obraId)].filter(id=>{ const c=dados(obraId).comp.find(x=>x.id===id); return c && contaDe(obraId,c.inv||c.id).comprar>0; }); }
+function rotPedido(obraId){
+  const d=dados(obraId), ids=selValida(obraId), tot=ids.reduce((a,id)=>{ const c=d.comp.find(x=>x.id===id); return a+best(c).p*contaDe(obraId,c.inv||c.id).comprar; },0);
+  return ids.length ? `${icon('cart',15)}Pedir ${ids.length} ${ids.length>1?'insumos':'insumo'} · ${brl(tot)}` : `${icon('cart',15)}Marque um insumo para pedir`;
+}
+function toggleComp(obraId,id,on){ const s=selComp(obraId); on?s.add(id):s.delete(id); const b=$('btnPedido'); if(b) b.innerHTML=rotPedido(obraId); }
+function pedirSel(obraId){ const s=selValida(obraId); if(!s.length) return toast('Marque pelo menos um insumo'); openCheckout(s,{obra:obraId}); }
+function fornRec(ob, c){ const k=contaDe(ob,c.inv||c.id); return (k.cot&&c.forn.find(f=>f.n===k.cot.forn))||best(c); }
 function tabComp(o){
-  const d=dados(o.id), sel=selComp(o.id);
-  return `${val('O nível de detalhe do levantamento (quantidades vindas do projeto) bate com o que eles fazem hoje na planilha? Eles confiariam na quantidade estimada pelo agente, ou querem revisar item a item?')}
-  <div class="row" style="margin-bottom:16px"><span class="sectit">Insumos gerados do projeto</span><span class="pill info">${d.comp.length} de ${o.id==='vila-nova'?64:31} insumos</span><span class="mut sm">preços cotados hoje · região de ${o.local.split(' ·')[0]}</span><span class="sp"></span>
-    <button class="btn" onclick="toast('(protótipo) exportaria a lista em planilha')">${icon('download',15)}Exportar</button><button class="btn amb" id="btnPedido" onclick="pedirSel('${o.id}')">${icon('cart',15)}Gerar pedido de compra (${sel.size})</button></div>
-  <div class="card" style="padding:0"><table>
-    <tr><th style="width:30px"></th><th>Insumo</th><th class="num">Qtd. da obra</th><th class="num">Comprado ou a caminho</th><th class="num">Falta comprar</th><th>Fornecedor</th><th class="num">Preço un.</th><th class="num">Total da falta</th><th class="num">Economia vs. 2º</th></tr>
-    ${d.comp.map(c=>{const k=compraDe(o.id,c), m=best(c), b=(k.cot&&c.forn.find(f=>f.n===k.cot.forn))||m, s=[...c.forn].sort((x,y)=>x.p-y.p)[1], eco=b===m&&s?(s.p-b.p)*k.compra:0;
-      const nota = k.trf?`<div class="sm" style="color:var(--blue)">+ ${num(k.trf)} por transferência</div>`:k.compra>0&&k.cot?`<div class="sm mut">${k.cot.id} em cotação</div>`:'';
-      return `<tr class="click" onclick="openComp('${c.id}')"><td><input type="checkbox" style="accent-color:var(--accent)" ${sel.has(c.id)?'checked':''} ${k.compra>0?'':'disabled'} onclick="event.stopPropagation();toggleComp('${o.id}','${c.id}',this.checked)"></td>
-      <td><b>${c.nome}</b><div class="sm mut">${c.fase}</div></td><td class="num">${num(c.qtd)} ${c.un}</td><td class="num">${num(k.comprado)}</td>
-      <td class="num">${k.compra>0?`<b>${num(k.compra)} ${c.un}</b>`:'<span class="pill ok">nada</span>'}${nota}</td>
-      <td>${b.n} <span class="mut sm">· ${b.prazo}</span></td><td class="num">${brl2(b.p)}</td><td class="num"><b>${k.compra>0?brl(b.p*k.compra):'—'}</b></td><td class="num" style="color:var(--green)">${eco>0?brl(eco):b!==m&&k.compra>0?`<span class="sm mut">${m.n.split(' ')[0]} é mais barata, mas ${c.id==='aco'?'está atrasada':'demora mais'}</span>`:'—'}</td></tr>`}).join('')}
-  </table></div>
-  <p class="sm mut" style="margin-top:12px">Falta comprar = precisa até o fim − saldo no almoxarifado − o que já está pedido − transferência sugerida. Clique num insumo para comparar fornecedores.</p>`;
+  const d=dados(o.id), f=filtroSup(), sel=selComp(o.id);
+  const its=d.comp.map(c=>({c, inv:c.inv||c.id, k:contaDe(o.id,c.inv||c.id), p:prazoItem(o.id,c.inv||c.id)}));
+  const cots=d.lotes.filter(l=>l.col===0||SUP.feito[l.id]).map(l=>({l, p:prazoItem(o.id,l.inv)})).sort((a,b)=>porDias(a.p.dias,b.p.dias));
+  const pend=cots.filter(x=>x.l.col===0);
+  const falta=its.filter(x=>x.k.comprar>0).sort((a,b)=>porDias(a.p.dias,b.p.dias));
+  const cob=its.filter(x=>x.k.comprar<=0 && !cots.some(y=>y.l.inv===x.inv));
+  const totFalta=falta.reduce((a,x)=>a+best(x.c).p*x.k.comprar,0);
+  const nome = inv => (its.find(x=>x.inv===inv)||{c:{}}).c.nome;
+  const cotLinha = ({l,p}) => linhaDecisao({prazo:p.prazo, tom:p.tom, titulo:`${docRef(l.id)} · ${nome(l.inv)||l.item} · ${l.q} · ${l.forn}`,
+    conta: l.inv&&d.inv.some(i=>i.id===l.inv) ? linhaConta(contaDe(o.id,l.inv)) : `${l.eta} · o projeto pede ${l.q}, nada no almoxarifado nem a caminho`, valor:l.v,
+    acao:{label:`Aprovar ${brl(l.v)}`, onclick:`aprovarLote('${l.id}')`}, foco: l===(pend[0]||{}).l, estado: SUP.feito[l.id]||'pendente'});
+  const fornCel = x => { const b=fornRec(o.id,x.c), m=best(x.c), s=[...x.c.forn].sort((p,q)=>p.p-q.p)[1];
+    const nota = b===m ? (s?`${brl(Math.round((s.p-b.p)*x.k.comprar))} a menos que o 2º`:'') : `${m.n.split(' ')[0]} é mais barata, mas demora mais`;
+    return `${b.n}<div class="sm mut">${brl2(b.p)}/${x.c.un} · ${b.prazo}${nota?` · ${nota}`:''}</div>`; };
+  const nomeCel = x => `<b>${x.c.nome}</b><div class="sm mut">${x.c.espec?x.c.espec+' · ':''}${x.c.fase}</div>`;
+  return `${cicloFaixa(o.id)}
+  ${val('O nível de detalhe do levantamento (quantidades vindas do projeto) bate com o que eles fazem hoje na planilha? Eles confiariam na quantidade estimada pelo agente, ou querem revisar item a item?')}
+  ${f?avisoFiltro(f):''}
+  <div class="sup-cab"><p class="sup-frase"><b>${falta.length?`${falta.length} ${falta.length>1?'insumos':'insumo'} para comprar · ${brl(totFalta)}`:'Nada para comprar agora'}</b>${pend.length?` · ${pend.length} ${pend.length>1?'cotações esperam':'cotação espera'} você`:''}</p>
+    <span class="sm mut">${d.comp.length} de ${o.id==='vila-nova'?64:31} insumos do projeto · preços cotados hoje 07:40</span>
+    <button class="btn sm" onclick="toast('(protótipo) exportaria a lista em planilha')">${icon('download',14)}Exportar</button></div>
+  ${!f&&cots.length?`<section class="sup-bloco"><h3 class="sup-h">Em cotação, esperando você <span class="mut">(${pend.length})</span></h3>
+    <p class="sup-sub">Já estão descontados da falta: aprovar não gera compra em dobro.</p>${listaDecisoes(cots.map(cotLinha))}</section>`:''}
+  <section class="sup-bloco"><h3 class="sup-h">Falta comprar <span class="mut">(${falta.length})</span></h3>
+    ${falta.length?`<div class="card sup-tab" style="padding:0"><table>
+      <thead><tr><th class="ck"><span class="sr-only">Incluir no pedido</span></th><th>Insumo</th><th>Conta</th><th>Fornecedor recomendado</th><th class="num">Total</th></tr></thead>
+      <tbody>${falta.map(x=>`<tr class="click" onclick="openComp('${x.c.id}')"><td class="ck"><input type="checkbox" aria-label="Incluir ${esc(x.c.nome)} no pedido" ${sel.has(x.c.id)?'checked':''} onclick="event.stopPropagation();toggleComp('${o.id}','${x.c.id}',this.checked)"></td>
+        <td>${nomeCel(x)}</td><td>${linhaConta(x.k)}</td><td>${fornCel(x)}</td><td class="num"><b>${brl(fornRec(o.id,x.c).p*x.k.comprar)}</b></td></tr>`).join('')}</tbody></table>
+      <div class="sup-pe-bloco"><span class="sm mut">Comprar = precisa até o fim − saldo − a caminho − em cotação − transferência sugerida. Clique no insumo para comparar fornecedores.</span><span class="sp"></span>
+        <button class="btn amb" id="btnPedido" onclick="pedirSel('${o.id}')">${rotPedido(o.id)}</button></div></div>`
+      :`<div class="card sup-vazio">${icon('checkCircle',18)}<span>Tudo o que a obra precisa já está no almoxarifado, a caminho, em cotação ou vem de outra obra.</span></div>`}</section>
+  ${!f&&cob.length?`<details class="sup-cob"><summary>${icon('chevRight',14,'chev')}Cobertos <span class="mut">(${cob.length})</span><span class="sm mut">· nada a comprar</span></summary>
+    <div class="card sup-tab" style="padding:0"><table><thead><tr><th>Insumo</th><th>Conta</th><th>Situação</th></tr></thead><tbody>
+    ${cob.map(x=>{ const cam=d.lotes.filter(l=>l.inv===x.inv&&l.col>=1&&!l.conf);
+      return `<tr class="click" onclick="openComp('${x.c.id}')"><td>${nomeCel(x)}</td><td>${linhaConta(x.k)}</td><td class="sm">${cam.length?`a caminho: ${cam.map(l=>docRef(l.id)).join(', ')}`:'o saldo cobre até o fim'}</td></tr>`; }).join('')}
+    </tbody></table></div></details>`:''}`;
 }
 
 /* ===================== PEDIDOS ===================== */
@@ -288,7 +714,7 @@ function moverLote(id, col){
   render();
 }
 function avancarLote(id){ const f=acharLote(id); if(f) moverLote(id, Math.min(KCOLS.length-1, f.l.col+1)); }
-function dropLote(e,col){ moverLote(e.dataTransfer.getData('t'), col); }
+function dropLote(e,col){ const id=e.dataTransfer.getData('t'), f=acharLote(id); if(f && f.l.col===0 && col===1) return aprovarLote(id); moverLote(id, col); }
 /* Recebido → conferir a NF. A conferência completa (NF-e, divergência, abatimento) é do js/features/campo.js. */
 function conferirLote(id){
   if(typeof window.openConferencia==='function') return window.openConferencia(id);
@@ -303,64 +729,82 @@ function conferirSimples(id){
   registrar(`Recebimento ${l.id} conferido · ${num(q)} ${l.un} de ${l.item} no almoxarifado`, {obra:ob});
   closeModal(); toastDesfazer(`${num(q)} ${l.un} de ${l.item} entraram no almoxarifado`, volta); render();
 }
+/* Pedidos ligados ao mesmo insumo (atrasado ↔ plano B, resto da transferência). */
+const ligadosDe = (L, l) => l.inv ? L.filter(x=>x!==l && x.inv===l.inv && !x.conf) : [];
 function cartaoLote(l){
-  const acao = l.col<4 ? `<button class="btn sm" title="Avançar para ${KCOLS[l.col+1]}" onclick="avancarLote('${l.id}')">Avançar ${icon('arrowRight',13)}</button>`
-    : l.conf ? `<span class="sm row" style="gap:5px;color:var(--green)">${icon('checkCircle',14)}No almoxarifado</span>`
-    : `<button class="btn amb sm" onclick="conferirLote('${l.id}')">${icon('file',13)}Conferir NF</button>`;
-  return `<div class="kc ${l.late?'late':''} ${l.conf?'done':''}" draggable="${!l.conf}" ondragstart="event.dataTransfer.setData('t','${l.id}')">
-    <div class="row sm mut" style="gap:4px;flex-wrap:wrap"><span>${l.id}</span><span class="sp"></span>${l.trf?`<span class="pill info">${icon('swap',12)}transf.</span>`:''}${l.ai?`<span class="pill warn">${icon('spark',12)}sugerido</span>`:''}${l.late?'<span class="pill bad">atrasado</span>':''}</div>
-    <b>${l.item}</b><div class="sm mut">${l.q} · ${l.forn}</div>
-    <div class="meta"><span>${l.eta}</span><b style="color:var(--ink);margin:0">${brl(l.v)}</b></div>
-    <div class="kact">${acao}</div></div>`;
+  const L=(acharLote(l.id)||{d:{lotes:[]}}).d.lotes, ab=abateNF(l), lig=ligadosDe(L,l);
+  const pills=`${l.late?pill('perda','atrasado'):''}${l.trf?pill('caminho',icon('swap',12)+'transferência'):''}${l.ai?pill('info',icon('spark',12)+'sugerido'):''}${l.conf?pill('ok',icon('check',12)+'no almoxarifado'):''}`;
+  return `<article class="kc${l.late?' late':''}${l.conf?' done':''}" data-doc="${l.id}" draggable="${!l.conf}" ondragstart="event.dataTransfer.setData('t','${l.id}')">
+    <div class="kc-top"><span class="kc-id">${l.id}</span>${pills}</div>
+    <b>${l.item}</b><div class="kc-q">${l.q} · ${l.forn}</div>
+    <div class="kc-ef">${ab?`<span class="t-perda">abate ${brl(ab)}</span> · ${num(l.medido)} de ${num(l.qn)} ${l.un} medidos`:l.eta}</div>
+    ${lig.length?`<div class="kc-lig">${icon('swap',12)}ligado a ${lig.map(x=>docRef(x.id)).join(', ')}</div>`:''}
+    <div class="kc-pe"><b class="kc-v">${brl(l.v)}</b>${botaoLote(l,{pri:false})}</div></article>`;
 }
+const ordemLotes = ls => [...ls].sort((a,b)=>(b.late?1:0)-(a.late?1:0));
 function tabKanban(o){
-  const L=dados(o.id).lotes, comp=L.filter(l=>l.col>=1&&!l.conf).reduce((a,l)=>a+l.v,0);
-  return `${val('Essas 5 etapas são as reais de um pedido? Falta "Pago"? Quem confere no recebimento é a mestre: conferir a NF pelo celular é viável no canteiro?')}
-  <div class="row" style="margin-bottom:16px"><span class="sectit">Pedidos da obra</span><span class="mut sm">arraste o cartão ou use "Avançar" · Recebido só entra no Almoxarifado depois de conferir a NF</span><span class="sp"></span>
-    <span class="sm mut">Pedidos em aberto: <b style="color:var(--ink)">${brl(comp)}</b></span></div>
-  <div class="kb5">${KCOLS.map((c,i)=>{const ls=L.filter(l=>l.col===i);
-    return `<div class="col" ondragover="event.preventDefault()" ondrop="dropLote(event,${i})"><h4>${i===4?`<span style="color:var(--green)">${icon('checkCircle',15)}</span>`:''}${c}<small>${ls.length} · ${brl(ls.reduce((a,l)=>a+l.v,0))}</small></h4>
-      ${ls.map(cartaoLote).join('')||'<div class="sm mut" style="padding:6px 4px">nenhum pedido</div>'}</div>`}).join('')}</div>`;
+  const L=dados(o.id).lotes, f=filtroSup(), ult=ULT();
+  const aberto=L.filter(l=>l.col>=1&&!l.conf).reduce((a,l)=>a+l.v,0), nf=L.filter(l=>l.col===ult&&!l.conf), late=L.filter(l=>l.late&&!l.conf), conf=L.filter(l=>l.conf);
+  const cols=KCOLS.map((c,i)=>i).filter(i=>!f || (f==='cotacao'&&i===0) || (f==='caminho'&&i>0&&i<ult) || (f==='nf'&&i===ult));
+  const urg=[
+    ...nf.map((l,k)=>{ const ab=abateNF(l); return linhaDecisao({prazo:/hoje/.test(l.eta)?'chegou hoje':'na obra', tom:'pede', titulo:`Conferir NF do ${docRef(l.id)} · ${l.item}`,
+      conta: ab?`${num(l.medido)} ${l.un} medidos contra ${num(l.qn)} na NF · ${l.forn}`:`${l.q} · ${l.forn}`, valor: ab?`−${brl(ab)}`:l.v,
+      acao:{label:'Conferir NF', onclick:`conferirLote('${l.id}')`}, foco:k===0}); }),
+    ...late.map(l=>{ const b=ligadosDe(L,l).find(x=>x.col===0), m=String(l.eta).match(/(\d+) dias? atrasad/);
+      return linhaDecisao({prazo:m?`${m[1]} dias atrasado`:'atrasado', tom:'perda', titulo:`${docRef(l.id)} · ${l.item} · ${l.q}`,
+        conta:`${l.forn} · ${l.eta}${b?` · plano B: ${docRef(b.id)} em cotação`:''}`, valor:l.v,
+        acao:{label:`Cobrar ${l.forn.split(' ')[0]}`, onclick:`cobrarLote('${l.id}')`}, sec:b?[{label:`Aprovar plano B ${brl(b.v)}`, onclick:`aprovarLote('${b.id}')`}]:[], foco:!nf.length}); }),
+  ];
+  return `${cicloFaixa(o.id)}
+  ${val('Essas 5 etapas são as reais de um pedido? Falta "Pago"? Quem confere no recebimento é a mestre: conferir a NF pelo celular é viável no canteiro?')}
+  ${f?avisoFiltro(f):''}
+  <div class="sup-cab"><p class="sup-frase"><b>Pedidos em aberto ${brl(aberto)}</b>${late.length?` · ${late.length} atrasado${late.length>1?'s':''}`:''}${nf.length?` · ${nf.length} para conferir`:''}</p></div>
+  ${!f&&urg.length?`<section class="sup-bloco"><h3 class="sup-h">Pede você agora</h3>${listaDecisoes(urg)}</section>`:''}
+  <div class="kb5 sup-kb" style="grid-template-columns:repeat(${cols.length},minmax(0,1fr))">${cols.map(i=>{ const ls=ordemLotes(L.filter(l=>l.col===i&&!l.conf)), hist=i===ult?conf:[];
+    return `<section class="col" ondragover="event.preventDefault()" ondrop="dropLote(event,${i})" aria-labelledby="kbc${i}"><h3 id="kbc${i}">${i===ult?'Conferir NF':KCOLS[i]}<small>${ls.length} · ${brl(ls.reduce((a,l)=>a+l.v,0))}</small></h3>
+      ${ls.map(cartaoLote).join('')||'<p class="kb-vazio">nenhum pedido</p>'}
+      ${hist.length?`<details class="kb-hist"><summary>${icon('chevRight',13,'chev')}${hist.length} conferido${hist.length>1?'s':''} · no almoxarifado</summary>${hist.map(cartaoLote).join('')}</details>`:''}</section>`; }).join('')}</div>`;
 }
 
 /* ===================== ALMOXARIFADO ===================== */
-/* O que fazer com o item: transferir, comprar o resto (sem contar o que já está pedido) ou ceder a sobra. */
-function acaoInv(o,i){
-  const falta=faltaDe(o.id,i.id), cot=emCotacao(o.id,i.id);
-  const tr=TRANSF.find(x=>x.inv===i.id&&x.destino===o.id&&x.sug>0), sob=TRANSF.find(x=>x.inv===i.id&&x.origem===o.id&&x.sug>0);
-  const curta = id => NOME_OBRA[id].replace('Reforma ','').replace('Casa ','');
-  if(falta<=0){
-    if(sob) return `<span class="pill ok" style="cursor:pointer" onclick="event.stopPropagation();openTransfer('${i.id}')">sobra ${num(sob.max)} · ${num(sob.sug)} podem ir para a ${curta(sob.destino)}</span>`;
-    if(i.obs) return `<span class="pill gray">${i.obs}</span>`;
-    return '<span class="pill ok">suficiente</span>';
-  }
-  let h='', resto=falta;
-  if(tr){ h+=`<span class="pill info" style="cursor:pointer" onclick="event.stopPropagation();openTransfer('${i.id}')">${icon('swap',12)}${num(tr.sug)} da ${curta(tr.origem)}</span> `; resto-=Math.min(tr.sug,falta); }
-  if(resto>0) h+= cot&&cot.qn>=resto ? `<span class="pill warn">comprar ${num(resto)} · ${cot.id}</span>` : `<span class="pill ${i.st==='bad'?'bad':'warn'}">comprar ${num(resto)}</span>`;
-  return h;
-}
 function tabInv(o){
-  const d=dados(o.id), inv=d.inv, acabam=inv.filter(i=>i.st==='bad'), quebra=inv.find(i=>i.quebra);
-  const sobras=TRANSF.filter(t=>t.origem===o.id&&t.sug>0);
-  const chegando=d.lotes.filter(l=>l.col===4&&!l.conf);
-  return `${val('Quem dá baixa no material no dia a dia é a mestre, pelo WhatsApp. Registrar "para onde foi" só nos itens curva A (aço, concreto, bloco, cimento, porcelanato) e contar o resto toda semana é viável no canteiro?')}
-  <div class="grid g4" style="margin-bottom:24px">
-    <div class="card kpi"><div class="l">Itens no almoxarifado</div><div class="v">${d.itensAlmox}</div><div class="s mut">${inv.length} nesta lista: curva A, B e alertas</div></div>
-    <div class="card kpi"><div class="l">Valor em estoque</div><div class="v">${brl(d.valorEstoque)}</div><div class="s mut">a preço de compra</div></div>
-    <div class="card kpi"><div class="l">Acabam em ≤ 7 dias</div><div class="v" style="color:${acabam.length?'var(--red)':'inherit'}">${acabam.length}</div><div class="s mut">${acabam.map(i=>i.nome.split(' ').slice(0,2).join(' ')).join(', ')||'nenhum'}</div></div>
-    ${quebra?`<div class="card kpi" style="cursor:pointer" onclick="openInvItem('${quebra.id}','${o.id}')"><div class="l">Quebra acima do previsto</div><div class="v" style="color:var(--amber)">${quebra.quebra.real}%</div><div class="s mut">${quebra.nome.split(' ').slice(0,2).join(' ')} · previsto ${quebra.quebra.prev}%</div></div>`
-      :`<div class="card kpi"><div class="l">Sobra para outras obras</div><div class="v" style="color:var(--green)">${sobras.length}</div><div class="s mut">${sobras.map(t=>`${num(t.sug)} ${t.un} de ${t.item.split(' ')[0].toLowerCase()}`).join(' · ')||'nada'}</div></div>`}
+  const d=dados(o.id), inv=d.inv, f=filtroSup(), ult=ULT();
+  const its=inv.map(i=>({i, k:contaDe(o.id,i.id), a:acoesItem(o.id,i.id), dias:duraDias(i)}));
+  const acabam=its.filter(x=>x.dias!=null&&x.dias<=7).sort((a,b)=>a.dias-b.dias);       // erro 2: pela duração, não por st
+  const trab=its.filter(x=>x.a.length||(x.dias!=null&&x.dias<=7)).sort((a,b)=>porDias(a.dias,b.dias)), cob=its.filter(x=>!trab.includes(x));
+  const sobras=TRANSF.filter(t=>t.origem===o.id&&t.sug>0), nf=d.lotes.filter(l=>l.col===ult&&!l.conf), quebra=inv.find(i=>i.quebra);
+  const pal=quebra&&d.lotes.find(l=>l.inv===quebra.id&&!l.conf&&l.palete!==undefined);
+  const nomeCurto = i => i.nome.split(' ')[0];
+  const durTxt = x => x.dias==null?`<span class="mut">${x.i.cob}</span>`:`<span class="${x.dias<=2?'t-perda':x.dias<=7?'t-pede':''}">${x.i.cob}</span>`;
+  const alertas=[
+    ...nf.map((l,k)=>{ const ab=abateNF(l); return linhaDecisao({prazo:/hoje/.test(l.eta)?'chegou hoje':'na obra', tom:'pede', titulo:`Conferir NF do ${docRef(l.id)} · ${l.item}`,
+      conta:(ab?`${num(l.medido)} ${l.un} medidos na caçamba contra ${num(l.qn)} na NF`:`${l.q} · ${l.forn}`)+' · só entra no saldo depois de conferir', valor:ab?`−${brl(ab)}`:l.v,
+      acao:{label:'Conferir NF', onclick:`conferirLote('${l.id}')`}, foco:k===0}); }),
+    ...(quebra&&pal?[(()=>{ const sa=(d.mov[quebra.id]||[]).filter(m=>m.q<0&&m.t!=='Contagem'), qb=sa.filter(m=>m.t==='Quebra').reduce((a,m)=>a-m.q,0);
+      return linhaDecisao({prazo:pal.palete?'resolvido':String(pal.eta).split(' · ')[0], tom:pal.palete?'ok':'perda', titulo:`${quebra.nome}: quebra de ${quebra.quebra.real}% contra ${quebra.quebra.prev}% previsto`,
+        conta:`${num(qb)} ${quebra.un} quebrados · a entrega anterior veio sem palete · a próxima é o ${docRef(pal.id)}`, valor:'',
+        acao:{label:`Exigir palete no ${pal.id}`, onclick:'exigirPalete()'}, foco:!nf.length, estado:pal.palete?{feito:'Palete exigido'}:'pendente'}); })()]:[]),
+  ];
+  const linha = x => { const a=x.a[0];
+    return `<tr class="click" onclick="openInvItem('${x.i.id}','${o.id}')"><td><b>${x.i.nome}</b> <span class="curva c${x.i.abc}" title="curva ${x.i.abc}" aria-label="curva ${x.i.abc}">${x.i.abc}</span><div class="sm mut">${x.i.obs||(x.i.abc==='C'?`contagem semanal · ${x.i.contagem||'—'}`:x.a.slice(1).map(y=>y.txt).join(' · ')||'baixa com destino')}</div></td>
+      <td class="sm">${durTxt(x)}</td><td>${linhaConta(x.k)}</td>
+      <td class="sup-acao">${a?`<button type="button" class="btn sm" onclick="event.stopPropagation();${a.onclick}">${a.label}</button>${x.a[1]?`<div class="sm mut">depois: ${x.a[1].txt}</div>`:''}`:''}</td></tr>`; };
+  const cab = `<thead><tr><th>Item</th><th>Dura</th><th>Conta</th><th><span class="sr-only">Ação</span></th></tr></thead>`;
+  return `${cicloFaixa(o.id)}
+  ${val('Quem dá baixa no material no dia a dia é a mestre, pelo WhatsApp. Registrar "para onde foi" só nos itens curva A (aço, concreto, bloco, cimento, porcelanato) e contar o resto toda semana é viável no canteiro?')}
+  ${f?avisoFiltro(f):''}
+  <div class="grid g3 sup-kpis">
+    ${kpi({rotulo:'Acabam em ≤ 7 dias', valor:acabam.length, tom:acabam.length?'perda':undefined, contexto:acabam.map(x=>`${nomeCurto(x.i)} ${/\d\/\d/.test(x.i.cob)?'até '+x.i.cob.match(/\d{1,2}\/\d{1,2}/)[0]:x.dias<=0?'acabou':'≈ '+x.dias+' d'}`).join(' · ')||'nenhum'})}
+    ${kpi({rotulo:'Sobra para outras obras', valor:sobras.length, contexto:sobras.map(t=>`${num(t.sug)} ${t.un} de ${t.item.split(' ')[0].toLowerCase()} → ${curtaObra(t.destino)}`).join(' · ')||'nada sobrando agora'})}
+    ${kpi({rotulo:'Em estoque', valor:brl(d.valorEstoque), contexto:`${d.itensAlmox} itens · a preço de compra`})}
   </div>
-  ${chegando.length?`<div class="card alertnote inline" style="margin-bottom:16px;font-size:13px;padding:12px 16px">${icon('truck',15)}<div><b>${chegando.map(l=>l.id).join(', ')}</b> chegou e ainda não foi conferido: ${chegando.map(l=>`${l.item}, ${l.eta}`).join('; ')}. Só entra no saldo depois da conferência. <a class="link" href="#" onclick="conferirLote('${chegando[0].id}');return false">Conferir NF</a></div></div>`:''}
-  <div class="row" style="margin-bottom:14px"><span class="sectit">Saldo por item</span><span class="sp"></span><button class="btn" onclick="openBaixa()">${icon('minus',15)}Registrar saída</button><button class="btn" onclick="go('obra','${o.id}','kanban');toast('Entradas vêm de Pedidos: Recebido → Conferir NF')">${icon('plus',15)}Registrar entrada</button><button class="btn" onclick="go('estoque')">${icon('swap',15)}Pedir de outra obra</button></div>
-  <div class="card" style="padding:0"><table>
-    <tr><th>Item</th><th class="num">Entrou</th><th class="num">Saiu</th><th class="num">Saldo</th><th class="num">A caminho</th><th class="num">Precisa até o fim</th><th class="num">Falta</th><th>Dura</th><th>O que fazer</th></tr>
-    ${inv.map(i=>{const s=i.ent-i.sai, cam=aCaminho(o.id,i.id), falta=faltaDe(o.id,i.id);
-      return `<tr class="click" onclick="openInvItem('${i.id}','${o.id}')"><td><b>${i.nome}</b> <span class="curva c${i.abc}" title="curva ${i.abc}">${i.abc}</span></td><td class="num">${num(i.ent)} ${i.un}</td><td class="num">${num(i.sai)}</td><td class="num"><b>${num(s)}</b></td>
-      <td class="num">${cam?`<span style="color:var(--blue)">${num(cam)}</span>`:'<span class="mut">—</span>'}</td><td class="num">${num(i.nec)}</td>
-      <td class="num">${falta>0?`<b style="color:${i.st==='bad'?'var(--red)':'var(--amber)'}">${num(falta)}</b>`:'<span class="mut">0</span>'}</td><td class="sm">${i.cob}</td><td>${acaoInv(o,i)}</td></tr>`}).join('')}
-  </table></div>
-  <p class="sm mut" style="margin-top:12px">Falta = precisa até o fim − saldo − a caminho. A caminho = pedidos aprovados, enviados, em trânsito ou recebidos sem conferir (vale o medido na obra). Curva A tem baixa com destino; curva C é contada toda semana.</p>`;
+  ${alertas.length?`<section class="sup-bloco"><h3 class="sup-h">Pede você agora</h3>${listaDecisoes(alertas)}</section>`:''}
+  <section class="sup-bloco"><div class="sup-cab"><h3 class="sup-h">Vai acabar ou pede ação <span class="mut">(${trab.length})</span></h3><span class="sp"></span>
+    <span class="sm mut">a mestre registra as saídas pelo WhatsApp</span><button class="btn sm" onclick="openBaixa()">${icon('minus',14)}Registrar saída</button></div>
+    <div class="card sup-tab" style="padding:0"><table>${cab}<tbody>${trab.map(linha).join('')||'<tr><td colspan="4" class="mut">Nada acaba nos próximos 7 dias e nada pede você.</td></tr>'}</tbody></table></div></section>
+  ${cob.length?`<details class="sup-cob"><summary>${icon('chevRight',14,'chev')}Cobertos <span class="mut">(${cob.length})</span><span class="sm mut">· o estoque e o que está a caminho cobrem até o fim</span></summary>
+    <div class="card sup-tab" style="padding:0"><table>${cab}<tbody>${cob.map(linha).join('')}</tbody></table></div></details>`:''}
+  <p class="sm mut sup-nota">Falta = precisa até o fim − saldo − a caminho − em cotação. A caminho = pedidos aprovados, enviados, em trânsito ou recebidos sem conferir (vale o medido na obra). Curva A tem baixa com destino; curva C é contada toda semana.</p>`;
 }
 
 function tabEquipe(o){
@@ -380,85 +824,136 @@ function tabPrazos(o){
   const d=dados(o.id), P=d.prazo; if(!P) return emOrcamento(o);
   const W=P.W, hoje=P.hoje, pct=x=>x/W*100, atrasa=o.atraso>0;
   const totC=Math.max(1,P.causas.reduce((a,c)=>a+Math.abs(c[2]),0));
+  /* eixo de datas: um traço por mês desde a data-base (W semanas); rótulo a cada 1 ou 2 meses, com o ano em janeiro */
+  const [bd,bm,ba]=P.base.split('/').map(Number), b0=new Date(ba,bm-1,bd), tot=W*7*864e5, MES=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  const meses=[]; for(let t=new Date(ba,bm,1), k=0; t-b0<tot; t=new Date(t.getFullYear(),t.getMonth()+1,1), k++) meses.push({x:(t-b0)/tot*100, l:MES[t.getMonth()]+(t.getMonth()===0?'/'+String(t.getFullYear()).slice(2):''), k});
+  const passo=W>40?2:1, dHoje=new Date(+b0+hoje*7*864e5), hojeTxt=`${String(dHoje.getDate()).padStart(2,'0')}/${String(dHoje.getMonth()+1).padStart(2,'0')}`;
+  const eixo=`<div class="g-eixo" aria-hidden="true"><span style="left:0">${MES[bm-1]}</span>${meses.filter(m=>m.k%passo===passo-1||/\//.test(m.l)).filter(m=>Math.abs(m.x-pct(hoje))>6&&m.x<96).map(m=>`<span style="left:${m.x}%">${m.l}</span>`).join('')}<span class="g-hj" style="left:${pct(hoje)}%">hoje ${hojeTxt}</span></div>`;
   /* estoque até o fim: itens do almoxarifado que ainda serão usados + insumos ainda não comprados */
   const linhas=[...d.inv.filter(i=>i.nec>0).map(i=>({nome:i.nome, un:i.un, tem:i.ent-i.sai, cam:aCaminho(o.id,i.id), nec:i.nec, falta:faltaDe(o.id,i.id), acao:acaoInv(o,i)})),
     ...d.comp.filter(c=>!d.inv.find(i=>i.id===(c.inv||c.id))).map(c=>{const k=compraDe(o.id,c); return {nome:c.nome, un:c.un, tem:0, cam:k.comprado, nec:c.qtd, falta:k.falta,
       acao:k.falta>0?`<span class="pill warn">comprar ${num(k.falta)}${k.cot?' · '+k.cot.id:''}</span>${c.id==='telha'?' <span class="pill gray">até 12/11 (frete 10 dias)</span>':''}`:'<span class="pill ok">pedido</span>'};})]
     .sort((a,b)=>(b.falta>0)-(a.falta>0));
+  const comPlano = typeof gPlanoLinhas==='function' && atrasa && o.id==='vila-nova', faltam = comPlano ? gPlanoPendentes() : 0;
+  const plano = comPlano ? `<div class="card" style="margin-bottom:var(--s5)"><div class="row" style="flex-wrap:wrap;margin-bottom:var(--s3)"><h3 style="margin:0">${faltam?`Plano: o atraso cai de ${o.atraso} para ${o.atraso-P.recupera} dias se você aprovar`:`Plano aprovado: o atraso previsto cai de ${o.atraso} para ${o.atraso-P.recupera} dias`}</h3><span class="sp"></span>
+      ${faltam?botao(`Aprovar o plano (${faltam} ${faltam>1?'ações':'ação'})`,'gPlanoAprovarTudo()',{pri:true,icone:'check'}):''}</div>
+      ${listaDecisoes(gPlanoLinhas())}
+      <p class="g-nota">A concretagem de qui 05/11 tem 80% de chuva: remarcar para sex 06/11 não muda o prazo, porque a armação só fecha com o aço novo.</p></div>` : '';
+  const TELA_CAUSA={Fornecedor:'kanban', Equipe:'equipe', Clima:'diario'};
   return `${val('A explicação do atraso por causa (fornecedor, equipe, clima) é o que o dono da obra cobra? Quais causas faltam (projeto, aprovação na prefeitura, pagamento)?')}
-  <div class="grid g4" style="margin-bottom:18px">
-    <div class="card kpi"><div class="l">Prazo contratado</div><div class="v">${o.prazo}</div></div>
-    <div class="card kpi"><div class="l">Previsão do agente</div><div class="v" style="color:${atrasa?'var(--red)':'var(--green)'}">${o.previsao}</div><div class="s" style="color:${atrasa?'var(--red)':'var(--green)'}">${prazoTxt(o)}</div></div>
-    <div class="card kpi"><div class="l">Fase atual</div><div class="v">${P.faseAtual}</div><div class="s mut">${P.fasePct}% · ${P.faseObs}</div></div>
-    ${atrasa?`<div class="card kpi"><div class="l">Com o plano de ação</div><div class="v" style="color:var(--green)">${o.atraso} → ${o.atraso-P.recupera} dias</div><div class="s mut">atraso cai de ${o.atraso} para ${o.atraso-P.recupera} dias</div></div>`
-      :`<div class="card kpi"><div class="l">Folga</div><div class="v" style="color:var(--green)">${-o.atraso} dias</div><div class="s mut">entrega ${o.previsao}, prazo ${o.prazo}</div></div>`}
+  ${plano}
+  <div class="grid g3 g-kpis" style="margin:0 0 var(--s5)">
+    ${kpi({rotulo:'Prazo contratado', valor:o.prazo, contexto:`início ${o.inicio}`})}
+    ${kpi({rotulo:'Previsão do agente', valor:o.previsao, contexto:prazoTxt(o), tom:atrasa?'perda':'ok'})}
+    ${kpi({rotulo:'Fase atual', valor:P.faseAtual, contexto:`${P.fasePct}% · ${P.faseObs}`})}
   </div>
-  <div class="grid" style="grid-template-columns:1.3fr 1fr">
-    <div class="card"><h3>Cronograma por fase <small>· semanas desde ${P.base}</small></h3>
-      <div class="legend" style="margin-bottom:16px"><span><i style="background:#dcd8cc"></i>planejado</span><span><i style="background:var(--accentHi)"></i>real / projetado</span><span><i style="background:var(--red);width:2px"></i>hoje (sem. ${hoje})</span></div>
-      <div class="gantt">${d.fases.map(f=>`<div>${f.n}<div class="sm mut">${f.pct}%</div></div><div class="gtrack">
-        <div class="gb" style="left:${pct(f.ini)}%;width:${pct(f.fim-f.ini)}%;background:#dcd8cc;top:3px;height:7px"></div>
-        <div class="gb" style="left:${pct(f.real[0])}%;width:${pct(f.real[1]-f.real[0])}%;background:${f.pct===100?'var(--green)':'var(--accentHi)'};top:13px;height:7px;opacity:${f.pct===0?.45:1}"></div>
-        <div class="today" style="left:${pct(hoje)}%"></div></div>`).join('')}</div>
-      ${atrasa?`<div class="card agentnote inline" style="margin-top:18px;font-size:13px;padding:14px 16px">${icon('spark',15)}<div><b>Plano de ação: o atraso cai de ${o.atraso} para ${o.atraso-P.recupera} dias</b><br>
-        1. Comprar os 600 kg de aço que faltam na Aço Forte (2 dias) e não esperar a Gerdau <span class="pill ok">−6 dias</span><br>
-        2. Contratar os 2 armadores por empreitada até o fim da estrutura <span class="pill ok">−5 dias</span><br>
-        3. Aprovar já a telha de Tatuí (PED-0163, frete de 10 dias) <span class="pill ok">−4 dias</span><br>
-        <span class="mut">A concretagem de qui 05/11 tem 80% de chuva: remarcar para sex 06/11 não muda o prazo, porque a armação só fecha com o aço novo.</span></div></div>`:''}</div>
-    <div><div class="card" style="margin-bottom:18px"><h3>${atrasa?'Por que vai atrasar':'Por que está adiantada'}${atrasa?` <small>· ${P.causas.map(c=>'+'+c[2]).join(' ')} = ${o.atraso} dias</small>`:''}</h3>
-      ${P.causas.map(c=>`<div style="margin:12px 0"><div class="row sm"><b>${c[0]}</b><span class="sp"></span><b>${c[2]>0?'+':'−'}${Math.abs(c[2])} dias</b></div><div class="sm mut">${c[1]}</div><div class="bar" style="margin-top:6px"><i style="width:${Math.abs(c[2])/totC*100}%;background:${c[3]}"></i></div></div>`).join('')}</div>
-  </div></div>
-    <div class="card" style="margin-top:18px"><h3>O estoque aguenta até o fim?</h3>
-      <table class="sm"><tr><th>Item</th><th class="num">Tem</th><th class="num">A caminho</th><th class="num">Precisa</th><th class="num">Falta</th><th>O que fazer</th></tr>
-      ${linhas.map(r=>`<tr><td><b>${r.nome.split(' (')[0]}</b></td><td class="num">${num(r.tem)}</td><td class="num">${r.cam?num(r.cam):'—'}</td><td class="num">${num(r.nec)}</td><td class="num">${r.falta>0?`<b>${num(r.falta)}</b>`:'0'}</td><td>${r.acao}</td></tr>`).join('')}</table>
-      <div class="row" style="margin-top:14px"><span class="sm mut">Falta = precisa − tem − a caminho. Nada do que já está pedido entra na sugestão.</span><span class="sp"></span><button class="btn amb" onclick="go('obra','${o.id}','kanban')">Ver pedidos sugeridos</button></div></div>`;
+  <div class="card"><h3>Cronograma por fase</h3>
+    <div class="legend" style="margin-bottom:var(--s4)"><span><i style="background:none;border:1.5px solid #8d9894"></i>planejado</span><span><i style="background:var(--accentHi)"></i>real e projetado</span><span><i style="background:var(--green)"></i>concluída</span><span><i style="background:var(--ink);width:2px"></i>hoje</span></div>
+    <div class="gantt"><div></div>${eixo}${d.fases.map(f=>`<div>${f.n}<div class="sm mut">${f.pct}%</div></div><div class="gtrack">
+      <div class="gb plan" style="left:${pct(f.ini)}%;width:${pct(f.fim-f.ini)}%;top:3px;height:8px"></div>
+      <div class="gb" style="left:${pct(f.real[0])}%;width:${pct(f.real[1]-f.real[0])}%;background:${f.pct===100?'var(--green)':'var(--accentHi)'};top:13px;height:8px;opacity:${f.pct===0?.5:1}"></div>
+      <div class="g-hoje-l" style="left:${pct(hoje)}%"></div></div>`).join('')}</div></div>
+  <div class="card" style="margin-top:var(--s5)"><h3>${atrasa?'Por que vai atrasar':'Por que está adiantada'} <small>· ${P.causas.map(c=>(c[2]>0?'+':'−')+Math.abs(c[2])).join(' ')} = ${Math.abs(o.atraso)} dias</small></h3>
+    ${P.causas.map(c=>`<div class="g-causa"><b>${c[0]}</b><span class="mut">${c[1]}</span><div class="bar"><i style="width:${Math.abs(c[2])/totC*100}%"></i></div><b class="num">${c[2]>0?'+':'−'}${Math.abs(c[2])} dias</b>${TELA_CAUSA[c[0]]?`<a class="link" href="#" onclick="go('obra','${o.id}','${TELA_CAUSA[c[0]]}');return false">Resolver ${icon('arrowRight',13)}</a>`:'<span></span>'}</div>`).join('')}</div>
+  <div class="card" style="margin-top:var(--s5)"><h3>O estoque aguenta até o fim?</h3>
+    <table class="sm"><tr><th>Item</th><th class="num">Tem</th><th class="num">A caminho</th><th class="num">Precisa</th><th class="num">Falta</th><th>O que fazer</th></tr>
+    ${linhas.map(r=>`<tr><td><b>${r.nome.split(' (')[0]}</b></td><td class="num">${num(r.tem)}</td><td class="num">${r.cam?num(r.cam):'—'}</td><td class="num">${num(r.nec)}</td><td class="num">${r.falta>0?`<b>${num(r.falta)}</b>`:'0'}</td><td>${r.acao}</td></tr>`).join('')}</table>
+    <div class="row" style="margin-top:14px;flex-wrap:wrap"><span class="sm mut">Falta = precisa − tem − a caminho. Nada do que já está pedido entra na sugestão.</span><span class="sp"></span>${botao('Ver pedidos sugeridos',`go('obra','${o.id}','kanban')`)}</div></div>`;
 }
 
 /* ===================== DRAWERS / MODAIS ===================== */
+/* Modal grava, drawer consulta. As telas preenchem #modalBox/#drawerPane e ligam a classe 'on' (ou usam abrirModal);
+   a base observa a classe e cuida da acessibilidade: role="dialog" (no index.html), título ligado por aria-labelledby,
+   X, foco no 1º campo (ou na caixa), Tab preso dentro, Esc fecha, e o foco volta a quem abriu. */
 function closeDrawer(){ $('drawer').classList.remove('on'); }
 function closeModal(){ $('modal').classList.remove('on'); }
+function abrirModal(html){ $('modalBox').innerHTML=html; $('modal').classList.add('on'); }
+/* Clicar fora fecha o modal só quando ele não tem formulário (assistente, medição, conferência não perdem o que foi digitado). */
+function foraDoModal(){ if($('modalBox').querySelector('input,select,textarea')) return $('modalBox').focus(); closeModal(); }
+const DLG = {};
+const caixaDe = tipo => tipo==='modal' ? $('modalBox') : $('drawerPane');
+function focaveis(el){ return [...el.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),summary,[tabindex]:not([tabindex="-1"])')].filter(x=>x.getClientRects().length); }
+function prepararDialogo(tipo, abrindo){
+  const box=caixaDe(tipo);
+  if(tipo==='modal' && !box.querySelector(':scope > .dlg-x')) box.insertAdjacentHTML('afterbegin', `<button type="button" class="iconbtn dlg-x" aria-label="Fechar" title="Fechar (Esc)" onclick="closeModal()">${icon('x',18)}</button>`);
+  const h=box.querySelector('h2'); if(h){ h.id=tipo+'Tit'; box.setAttribute('aria-labelledby',h.id); } else box.removeAttribute('aria-labelledby');
+  if(abrindo || !box.contains(document.activeElement)){
+    const alvo = tipo==='modal' && box.querySelector('input.f:not([readonly]),select.f,textarea.f');
+    (alvo || box).focus({preventScroll:true});
+  }
+}
+function vigiarDialogo(tipo){
+  const wrap=$(tipo), box=caixaDe(tipo);
+  new MutationObserver(()=>{ const on=wrap.classList.contains('on');
+    if(on && !DLG[tipo]){ const a=document.activeElement; DLG[tipo]={volta: a && a!==document.body && !wrap.contains(a) ? a : null}; prepararDialogo(tipo, true); }
+    else if(!on && DLG[tipo]){ const v=DLG[tipo].volta; delete DLG[tipo]; if(v && document.contains(v) && !$('modal').classList.contains('on')) v.focus({preventScroll:true}); }
+  }).observe(wrap, {attributes:true, attributeFilter:['class']});
+  new MutationObserver(()=>{ if(wrap.classList.contains('on') && DLG[tipo]) prepararDialogo(tipo, false); }).observe(box, {childList:true});
+}
+vigiarDialogo('modal'); vigiarDialogo('drawer');
+document.addEventListener('keydown', e=>{
+  const topo = $('modal').classList.contains('on') ? 'modal' : $('drawer').classList.contains('on') ? 'drawer' : null;
+  if(e.key==='Escape'){ if(topo==='modal') closeModal(); else if(topo==='drawer') closeDrawer(); else if(PAINEL.aberto && state.view==='obra') fecharPainel(); return; }
+  if(e.key==='Tab' && topo){
+    const box=caixaDe(topo), f=focaveis(box); if(!f.length){ e.preventDefault(); box.focus(); return; }
+    const a=f[0], z=f[f.length-1], at=document.activeElement;
+    if(!box.contains(at)){ e.preventDefault(); a.focus(); }
+    else if(e.shiftKey && (at===a || at===box)){ e.preventDefault(); z.focus(); }
+    else if(!e.shiftKey && at===z){ e.preventDefault(); a.focus(); }
+    return;
+  }
+  if(e.key==='/' && !topo && state.view==='obra' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)){ e.preventDefault(); abrirPainel(true); }
+});
+/* Drawers de Suprimentos: cabeçalho com a linha de conta, corpo e rodapé de ação fixo (.sup-pe). */
+function cabDrawer(rotulo, titulo, sub, conta){
+  return `<div class="row"><span class="mut sm">${rotulo}</span><span class="sp"></span><button class="iconbtn" onclick="closeDrawer()" aria-label="Fechar">${icon('x',18)}</button></div>
+    <h2 style="margin:6px 0 4px">${titulo}</h2>${sub?`<div class="mut sm">${sub}</div>`:''}<div class="sup-dconta">${conta}</div>`;
+}
 function openComp(id){
   const c=insumo(id); if(!c) return toast('Insumo não encontrado');
-  const fs=[...c.forn].sort((a,b)=>a.p-b.p), ob=Object.keys(DADOS).find(k=>DADOS[k].comp.includes(c)), k=compraDe(ob,c), q=k.compra>0?k.compra:c.qtd;
-  $('drawerPane').innerHTML = `<div class="row"><span class="mut sm">Insumo · ${NOME_OBRA[ob]}</span><span class="sp"></span><button class="iconbtn" onclick="closeDrawer()" aria-label="Fechar">${icon('x',18)}</button></div>
-    <h2 style="margin:6px 0 4px">${c.nome}</h2><div class="mut">${c.fase} · obra inteira <b style="color:var(--ink)">${num(c.qtd)} ${c.un}</b> · falta comprar <b style="color:var(--ink)">${num(k.compra)} ${c.un}</b></div>
-    <div class="card agentnote inline" style="margin:18px 0;font-size:13px;padding:14px 16px">${icon('spark',15)}<div><b>Como estimei:</b> quantidade tirada do memorial descritivo e das plantas, com a perda média do mercado para este insumo. Falta comprar = precisa − saldo − a caminho${k.trf?` − ${num(k.trf)} por transferência`:''}. <a href="#" style="text-decoration:underline" onclick="toast('(protótipo) abriria o trecho do projeto');return false">ver no projeto</a></div></div>
-    <h3 style="font:500 18px var(--serif);margin:22px 0 12px">Onde comprar · ${fs.length} fornecedores na região</h3>
-    ${fs.map((f,i)=>`<div class="card" style="margin-bottom:10px;padding:16px 18px;${i===0?'border-color:#bcd0bf':''}"><div class="row"><b>${f.n}</b>${i===0?'<span class="pill ok">melhor preço</span>':''}<span class="sp"></span><b>${brl2(f.p)}</b><span class="mut sm">/${c.un}</span></div>
-      <div class="row sm mut" style="margin-top:6px;gap:16px"><span class="row" style="gap:5px">${icon('pin',13)}${f.cid}</span><span class="row" style="gap:5px">${icon('truck',13)}${f.prazo}</span><span class="row" style="gap:5px">${icon('star',13)}${f.nota}</span><span class="sp"></span><span>${num(q)} ${c.un}: <b style="color:var(--ink)">${brl(f.p*q)}</b></span></div>
-      <div class="row" style="margin-top:12px;gap:8px">${k.compra>0?`<button class="btn sm" onclick="openCheckout(['${c.id}'],{forn:'${f.n}',obra:'${ob}'})">Pedir aqui</button>`:`<span class="pill ok">nada a comprar agora</span>`}<button class="btn sm" onclick="toast('(protótipo) abriria o WhatsApp do fornecedor')">Contato</button></div></div>`).join('')}
-    <p class="sm mut">Preços coletados hoje às 07:40 em sites, catálogos e cotações por WhatsApp. Validade de 48 h.</p>`;
+  const ob=Object.keys(DADOS).find(k=>DADOS[k].comp.includes(c)), inv=c.inv||c.id, k=contaDe(ob,inv), rec=fornRec(ob,c);
+  const fs=[rec, ...[...c.forn].sort((a,b)=>a.p-b.p).filter(f=>f!==rec)], q=k.comprar>0?k.comprar:(k.cot?k.cot.qn:0), m=best(c);
+  const pe = k.comprar>0 ? `${botao('Ver no almoxarifado', `closeDrawer();go('obra','${ob}','inventario')`, {})}<span class="sp"></span>${botao(`Pedir ${num(k.comprar)} ${c.un} · ${brl(rec.p*k.comprar)}`, `openCheckout(['${c.id}'],{forn:'${esc(rec.n)}',obra:'${ob}'})`, {pri:true, icone:'cart'})}`
+    : k.cot ? `${pill('pede',`${k.cot.id} em cotação`)}<span class="sp"></span>${botao(`Aprovar ${k.cot.id} · ${brl(k.cot.v)}`, `aprovarLote('${k.cot.id}');openComp('${c.id}')`, {pri:true})}`
+    : `${pill('ok','nada a comprar agora')}<span class="sp"></span>${botao('Ver no almoxarifado', `closeDrawer();go('obra','${ob}','inventario')`, {})}`;
+  $('drawerPane').innerHTML = `${cabDrawer(`Insumo · ${NOME_OBRA[ob]}`, c.nome, `${c.espec?c.espec+' · ':''}${c.fase} · projeto: ${num(c.qtd)} ${c.un} na obra inteira`,
+      linhaConta({...k, fonte:k.cot?`${k.cot.id} em cotação já descontado`:k.tr?`${num(k.transf)} ${c.un} vêm da ${NOME_OBRA[k.tr.origem]}`:''}))}
+    <div class="card agentnote inline sup-nota-ag">${icon('spark',15)}<div><b>Como estimei:</b> quantidade tirada do memorial descritivo e das plantas, com a perda média do mercado para este insumo. <a href="#" class="link" onclick="toast('(protótipo) abriria o trecho do projeto');return false">ver no projeto</a></div></div>
+    <h3 class="sup-dh">Onde comprar · ${fs.length} fornecedores na região</h3>
+    <div class="card sup-forn">${fs.map((f,i)=>`<div class="sup-fl"><div class="sup-fn"><b>${f.n}</b> ${i===0?pill('ok',f===m?'melhor preço':'recomendado'):''}
+        <div class="sm mut">${f.cid} · ${f.prazo} · nota ${String(f.nota).replace('.',',')}${i===0&&f!==m?` · ${m.n.split(' ')[0]} é mais barata, mas demora mais`:''}</div></div>
+      <div class="num"><b>${brl2(f.p)}</b><span class="sm mut">/${c.un}</span>${q?`<div class="sm mut">${num(q)} ${c.un}: ${brl(f.p*q)}</div>`:''}</div>
+      <button class="iconbtn" aria-label="Falar com ${esc(f.n)} no WhatsApp" title="Contato" onclick="toast('(protótipo) abriria o WhatsApp do fornecedor')">${icon('message',16)}</button></div>`).join('')}</div>
+    <p class="sm mut">${chipFonte({origem:'cotacao', quem:'sites, catálogos e WhatsApp', hora:'hoje 07:40'})} · validade de 48 h</p>
+    <div class="sup-pe">${pe}</div>`;
   $('drawer').classList.add('on');
 }
 function openInvItem(id, obraId){
   const ob=obraId||(state.obra&&DADOS[state.obra]&&dados(state.obra).inv.length?state.obra:'vila-nova'), d=dados(ob);
   const i=d.inv.find(x=>x.id===id)||d.inv[0]; if(!i) return toast('Item não encontrado no almoxarifado');
-  const s=i.ent-i.sai, cam=aCaminho(ob,i.id), falta=faltaDe(ob,i.id), C=i.abc==='C';
+  const s=i.ent-i.sai, k=contaDe(ob,i.id), C=i.abc==='C', ac=acoesItem(ob,i.id);
   const movs=d.mov[i.id]||[{d:'—',t:'Entrada',q:+i.ent,onde:'Recebimentos conferidos',quem:'mestre'},{d:'—',t:'Saída',q:-i.sai,onde:'Várias frentes',quem:'—'}];
-  const saidas=movs.filter(m=>m.q<0&&m.t!=='Contagem'), cores=['#5b7a99','#8a7ca8','#5b8364','#b08a4a','#6f8f8a'];
-  const cor=(m,k)=>m.t==='Quebra'?'var(--red)':cores[k%cores.length];
+  const saidas=movs.filter(m=>m.q<0&&m.t!=='Contagem'), cor=m=>m.t==='Quebra'?'var(--red)':'var(--grayInk)';
   const quebras=saidas.filter(m=>m.t==='Quebra').reduce((a,m)=>a-m.q,0), usados=saidas.filter(m=>m.t!=='Quebra').reduce((a,m)=>a-m.q,0);
-  const tr=TRANSF.find(x=>x.inv===i.id&&x.destino===ob&&x.sug>0), cot=emCotacao(ob,i.id);
+  const pal=i.quebra && d.lotes.find(l=>l.inv===i.id&&!l.conf&&l.palete!==undefined);
   closeModal();
-  $('drawerPane').innerHTML = `<div class="row"><span class="mut sm">Almoxarifado · ${NOME_OBRA[ob]}</span><span class="sp"></span><button class="iconbtn" onclick="closeDrawer()" aria-label="Fechar">${icon('x',18)}</button></div>
-    <h2 style="margin:6px 0 4px">${i.nome} <span class="curva c${i.abc}">${i.abc}</span></h2>
-    <div class="mut">Entraram ${num(i.ent)} · saíram ${num(i.sai)} · <b style="color:var(--ink)">saldo ${num(s)} ${i.un}</b>${cam?` · a caminho ${num(cam)}`:''} · precisa ${num(i.nec)} · <b style="color:${falta?'var(--red)':'var(--green)'}">falta ${num(falta)}</b></div>
-    ${C?`<div class="card inline" style="margin:18px 0;font-size:13px;padding:14px 16px;background:var(--cream)">${icon('info',15)}<div><b>Curva C: controle por contagem semanal, sem destino.</b> Item barato e de uso espalhado; registrar para onde vai cada unidade vira burocracia. Última contagem: ${i.contagem||'—'}, ${num(s)} ${i.un}.</div></div>`
-      :`<h3 style="font:500 18px var(--serif);margin:26px 0 12px">Para onde foi</h3>
-    <div class="split" style="height:20px;margin-bottom:12px;border-radius:6px">${saidas.map((m,k)=>`<div style="width:${-m.q/i.ent*100}%;background:${cor(m,k)}" title="${m.onde}"></div>`).join('')}<div style="width:${Math.max(0,s)/i.ent*100}%;background:#dcd8cc"></div></div>
-    <div class="sm">${saidas.map((m,k)=>`<div class="row" style="margin:6px 0"><i style="width:9px;height:9px;border-radius:3px;background:${cor(m,k)};flex:none"></i>${m.onde}<span class="sp"></span><b>${num(-m.q)}</b><span class="mut" style="width:42px;text-align:right">${Math.round(-m.q/i.ent*100)}%</span></div>`).join('')}
-      <div class="row" style="margin:6px 0"><i style="width:9px;height:9px;border-radius:3px;background:#dcd8cc;flex:none"></i>No almoxarifado<span class="sp"></span><b>${num(s)}</b><span class="mut" style="width:42px;text-align:right">${Math.round(s/i.ent*100)}%</span></div></div>`}
-    ${i.quebra?`<div class="card alertnote inline" style="margin:18px 0;font-size:13px;padding:14px 16px">${icon('alert',15)}<div><b>Quebra de ${Math.round(quebras/(quebras+usados)*100)}% contra ${i.quebra.prev}% previsto:</b> de ${num(quebras+usados)} que saíram, ${num(usados)} foram assentados e ${num(quebras)} quebraram. O PED-0149 foi descarregado sem palete.
-      ${(()=>{const p=d.lotes.find(l=>l.id==='PED-0162'); return p? (p.palete?`<div style="margin-top:8px"><span class="pill ok">${icon('check',12)}palete exigido no PED-0162</span></div>`:`<div style="margin-top:8px"><button class="btn sm amb" onclick="exigirPalete();openInvItem('${i.id}','${ob}')">Exigir palete no PED-0162 (9.000 un)</button></div>`):'';})()}</div></div>`:''}
+  const fica=!/openTransfer|openCheckout|conferirLote|go\(/.test((ac[0]||{}).onclick||'');      // ação que não sai do drawer: redesenha no lugar
+  const pe = `${botao(C?'Registrar contagem ou saída':'Registrar saída', `openBaixa('${i.id}')`, {icone:'minus'})}<span class="sp"></span>`+
+    (ac[0] ? botao(ac[0].label, `${ac[0].onclick}${fica?`;openInvItem('${i.id}','${ob}')`:''}`, {pri:true}) : pill('ok','estoque cobre até o fim'));
+  $('drawerPane').innerHTML = `${cabDrawer(`Almoxarifado · ${NOME_OBRA[ob]}`, `${i.nome} <span class="curva c${i.abc}" aria-label="curva ${i.abc}">${i.abc}</span>`,
+      `entraram ${num(i.ent)} · saíram ${num(i.sai)} ${i.un} · dura ${i.cob}`, linhaConta({...k, fonte:k.cot?`${k.cot.id} em cotação já descontado`:''}))}
+    ${ac.length>1?`<p class="sm sup-depois">Também pede você: ${ac.slice(1).map(a=>a.doc?a.txt.replace(a.doc,docRef(a.doc)):a.txt).join(' · ')}</p>`:''}
+    ${C?`<div class="card inline sup-nota-ag" style="background:var(--sunk)">${icon('info',15)}<div><b>Curva C: controle por contagem semanal, sem destino.</b> Item barato e de uso espalhado; registrar para onde vai cada unidade vira burocracia. Última contagem: ${i.contagem||'—'}, ${num(s)} ${i.un}.</div></div>`
+      :`<h3 class="sup-dh">Para onde foi</h3>
+    <div class="split" style="height:16px;margin-bottom:12px;border-radius:6px" role="img" aria-label="${num(usados)} usados, ${num(quebras)} quebrados, ${num(Math.max(0,s))} no almoxarifado">${saidas.map(m=>`<div style="width:${-m.q/i.ent*100}%;background:${cor(m)}" title="${esc(m.onde)}"></div>`).join('')}<div style="width:${Math.max(0,s)/i.ent*100}%;background:var(--line)"></div></div>
+    <div class="sm sup-leg">${saidas.map(m=>`<div class="row"><i style="background:${cor(m)}"></i>${m.onde}<span class="sp"></span><b>${num(-m.q)}</b><span class="mut sup-pct">${Math.round(-m.q/i.ent*100)}%</span></div>`).join('')}
+      <div class="row"><i style="background:var(--line)"></i>No almoxarifado<span class="sp"></span><b>${num(s)}</b><span class="mut sup-pct">${Math.round(s/i.ent*100)}%</span></div></div>`}
+    ${i.quebra?`<div class="card alertnote inline sup-nota-ag">${icon('alert',15)}<div><b>Quebra de ${Math.round(quebras/(quebras+usados)*100)}% contra ${i.quebra.prev}% previsto:</b> de ${num(quebras+usados)} que saíram, ${num(usados)} foram assentados e ${num(quebras)} quebraram. O PED-0149 foi descarregado sem palete.${pal&&pal.palete?` ${pill('ok',icon('check',12)+'palete exigido no '+pal.id)}`:''}</div></div>`:''}
     ${i.obs?`<div class="sm mut" style="margin-top:12px">${icon('info',13)} ${i.obs}</div>`:''}
-    <h3 style="font:500 18px var(--serif);margin:22px 0 12px">Movimentações</h3>
-    <div class="card" style="padding:0"><table class="sm"><tr><th>Data</th><th>Tipo</th><th class="num">Qtd</th><th>${C?'Observação':'Destino / origem'}</th><th>Quem</th></tr>
-      ${movs.map(m=>`<tr><td>${m.d}</td><td><span class="pill ${m.q>0?'ok':m.t==='Quebra'?'bad':'gray'}">${m.t}</span></td><td class="num">${m.q>0?'+':''}${num(m.q)}</td><td>${m.onde}</td><td class="mut">${m.quem}</td></tr>`).join('')}</table></div>
-    <div class="row" style="margin-top:16px"><button class="btn" onclick="openBaixa('${i.id}')">${icon('minus',15)}${C?'Registrar contagem ou saída':'Registrar saída'}</button>
-      ${falta<=0?'<span class="pill ok">estoque cobre até o fim</span>'
-        :tr?`<button class="btn amb" onclick="openTransfer('${i.id}')">${icon('swap',15)}Trazer ${num(tr.sug)} da ${NOME_OBRA[tr.origem]}</button>`
-        :cot?`<button class="btn amb" onclick="closeDrawer();go('obra','${ob}','kanban');toast('${cot.id} em cotação: ${num(cot.qn)} ${i.un}')">Ver ${cot.id} (${num(cot.qn)} ${i.un})</button>`
-        :`<button class="btn amb" onclick="closeDrawer();go('obra','${ob}','componentes')">Pedir os ${num(falta)} ${i.un} que faltam</button>`}</div>`;
+    <h3 class="sup-dh">Movimentações</h3>
+    <div class="card" style="padding:0"><table class="sm"><thead><tr><th>Data</th><th>Tipo</th><th class="num">Qtd</th><th>${C?'Observação':'Destino / origem'}</th><th>Quem</th></tr></thead><tbody>
+      ${movs.map(m=>`<tr><td>${m.d}</td><td>${pill(m.q>0?'ok':m.t==='Quebra'?'perda':'info', m.t)}</td><td class="num">${m.q>0?'+':''}${num(m.q)}</td><td>${String(m.onde).replace(/(PED|TRF)-\d{4}/g, x=>docRef(x))}</td><td class="mut">${m.quem}</td></tr>`).join('')}</tbody></table></div>
+    <div class="sup-pe">${pe}</div>`;
   $('drawer').classList.add('on');
 }
 function openBaixa(){
@@ -516,39 +1011,51 @@ function openWizard(step){
   $('modal').classList.add('on');
 }
 
-/* Estoque entre obras */
-function renderEstoque(){
+/* Estoque entre obras. #estoque mostra todas; a aba Entre obras da obra filtra as transferências dela.
+   Verbo por direção: "Trazer" olhando do destino, "Ceder" olhando da origem; o modal sempre "Pedir transferência de N". */
+function barraCap(t, op={}){
+  const w=x=>t.saldo?x/t.saldo*100:0;
+  return `<div class="cap${op.mini?' mini':''}" role="img" aria-label="${t.item} na ${NOME_OBRA[t.origem]}: usa ${num(t.usar)}, reserva ${num(t.reserva)}, pode sair ${num(t.max)} de ${num(t.saldo)} ${t.un}">
+    <div class="split"><div style="width:${w(t.usar)}%;background:var(--grayInk)"></div><div style="width:${w(t.reserva)}%;background:var(--line)"></div><div style="width:${w(t.max)}%;background:var(--blue)"></div></div>
+    <div class="legend"><span><i style="background:var(--grayInk)"></i>usa ${num(t.usar)}</span><span><i style="background:var(--line)"></i>reserva ${num(t.reserva)}</span><span><i style="background:var(--blue)"></i>pode sair <b>${num(t.max)}</b> de ${num(t.saldo)} ${t.un}</span></div></div>`;
+}
+const nomeItem = t => t.item.split(' ')[0].toLowerCase();
+function estoqueCorpo(ob, h){
   recalcTransf();
-  const ativas=TRANSF.filter(t=>t.sug>0), vence=ativas.filter(t=>t.perda);
+  const H=`h${h}`, ativas=TRANSF.filter(t=>t.sug>0&&(!ob||t.origem===ob||t.destino===ob)), vence=ativas.filter(t=>t.perda);
+  const hist=TRF_HIST.filter(x=>!ob||x.de===ob||x.para===ob), pedidas=hist.filter(x=>x.st!=='Recebida'), feitas=hist.filter(x=>x.st==='Recebida');
   const eco=ativas.reduce((a,t)=>a+t.sug*(t.novo-t.custo),0), dias=Math.max(0,...ativas.map(t=>t.dias||0));
-  const saldoObra = id => TRF_HIST.reduce((a,h)=>a+(h.de===id?h.v:0)-(h.para===id?h.v:0),0);
-  const qtd = t => `${num(t.sug)} ${t.un==='un'?'':t.un+' de '}${t.item.split(' ')[0].toLowerCase()}${t.un==='un'?'s':''}`;
+  const saldoObra=id=>TRF_HIST.reduce((a,x)=>a+(x.de===id?x.v:0)-(x.para===id?x.v:0),0);
+  const verbo=t=>ob&&t.origem===ob?'Ceder':'Trazer';
+  const sug=t=>`<div class="trf-l">
+      <div class="trf-txt"><div><b>${verbo(t)} ${num(t.sug)} ${t.un} de ${nomeItem(t)}</b> <span class="mut">· ${curtaObra(t.origem)} → ${curtaObra(t.destino)}</span>${t.perda?` ${pill('pede',icon('hourglass',12)+'vence em 25 dias na origem')}`:''}</div>
+        <div class="sm mut">${t.item} · a ${curtaObra(t.destino)} precisa de ${num(t.falta)} ${t.un} · chega hoje, comprando levaria ${t.novoPrazo}</div>${barraCap(t,{mini:true})}</div>
+      <div class="num trf-v"><b>${brl2(t.sug*t.custo)}</b><div class="sm mut">novo: ${brl2(t.sug*t.novo)}</div></div>
+      <div>${botao(`${verbo(t)} ${num(t.sug)} ${t.un}`, `openTransfer('${t.inv}')`, {sm:true, pri:t===ativas[0], icone:'swap'})}</div></div>`;
+  const histTab=xs=>`<table class="sm"><thead><tr><th>Nº</th><th>Data</th><th>Item</th><th>De → para</th><th class="num">Valor (custo)</th><th>Situação</th></tr></thead><tbody>
+    ${xs.map(x=>`<tr data-doc="${x.id}"><td>${docRef(x.id)}</td><td>${x.d}</td><td>${x.item} · ${x.q}</td><td>${curtaObra(x.de)} → ${curtaObra(x.para)}</td><td class="num">${brl2(x.v)}</td><td>${pill(x.st==='Recebida'?'ok':'caminho',x.st)}</td></tr>`).join('')}</tbody></table>`;
+  return `<div class="grid g3 sup-kpis">
+      ${kpi({rotulo:'Compra evitada', projecao:true, valor:brl(ativas.reduce((a,t)=>a+t.sug*t.novo,0)), contexto:ativas.length?`a preço novo · ${brl2(eco)} a menos pagando o custo`:'nenhuma sugestão pendente'})}
+      ${kpi({rotulo:'Dias ganhos', projecao:true, valor:dias?`até ${dias} dias`:'—', contexto:ativas.length?`chega hoje; comprando, levaria de ${Math.min(...ativas.map(t=>t.dias))} a ${dias} dias`:'—'})}
+      ${kpi({rotulo:'Deixa de vencer', projecao:true, valor:vence.length?vence.map(t=>`${num(t.sug)} ${t.un}`).join(' + '):'—', contexto:vence.map(t=>`${nomeItem(t)} da ${curtaObra(t.origem)}, vence em 25 dias`).join('; ')||'nada vencendo'})}
+    </div>
+    <section class="sup-bloco"><${H} class="sup-h">Transferências sugeridas <span class="mut">(${ativas.length})</span></${H}>
+      <p class="sup-sub">${ativas.length?`${ativas.length} ${ativas.length>1?'sobras podem':'sobra pode'} cobrir faltas: ${ativas.map(nomeItem).join(', ')}. Sempre a preço de custo do lote original.`:'Nenhuma sobra cobre falta hoje · próxima checagem amanhã às 6h.'}</p>
+      ${ativas.length?`<div class="card trf-lista">${ativas.map(sug).join('')}</div>`:''}
+      <details class="sup-como"><summary>${icon('info',14)}Como calculo o que pode sair</summary><p>A obra de origem fica com o que ainda vai usar <b>mais uma reserva de metade disso</b>. Só o que passar disso pode sair. O destino precisa = precisa − saldo − a caminho − em cotação.</p></details></section>
+    ${pedidas.length?`<section class="sup-bloco"><${H} class="sup-h">Pedidas, esperando a origem <span class="mut">(${pedidas.length})</span></${H}><div class="card" style="padding:0">${histTab(pedidas)}</div></section>`:''}
+    <div class="grid trf-pe">
+      <section><${H} class="sup-h">Histórico</${H}><div class="card" style="padding:0">${histTab(feitas)}</div></section>
+      <section><${H} class="sup-h">Acerto entre as obras</${H}><div class="card">
+        <p class="sm mut" style="margin:0 0 8px">Quem cede recebe o valor de volta no orçamento; quem recebe lança como gasto de material.</p>
+        ${['vila-nova','loja-centro'].filter(id=>!ob||id===ob).map(id=>{ const v=saldoObra(id); return `<p class="trf-ac"><b>${curtaObra(id)}</b> ${v>=0?'cedeu':'recebeu'} <b>${brl2(Math.abs(v))}</b> a mais do que ${v>=0?'recebeu':'cedeu'}.</p>`; }).join('')}</div></section>
+    </div>`;
+}
+function renderEstoque(){
   return `<div class="top"><h1>Estoque entre obras</h1><span class="crumb">o que sobra numa obra e falta em outra · sempre a preço de custo</span></div>
-  <div class="page">
+  <div class="page">${cicloFaixa(null)}
     ${val('Ele já faz isso hoje, "no braço", entre obras? Com que frequência? Quem autoriza a saída da obra de origem: o mestre dela, o gerente ou o dono? E quando as obras são de clientes diferentes (o material é do cliente), ainda pode?')}
-    <div class="grid g4" style="margin-bottom:18px">
-      <div class="card kpi"><div class="l">Material aproveitado</div><div class="v">${ativas.length} ${ativas.length===1?'insumo':'insumos'}</div><div class="s mut">${ativas.map(qtd).join(' · ')||'nenhuma sugestão pendente'}</div></div>
-      <div class="card kpi"><div class="l">Deixa de vencer</div><div class="v" style="color:var(--green)">${vence.length?vence.map(t=>`${num(t.sug)} ${t.un}`).join(' + '):'—'}</div><div class="s mut">${vence.map(t=>`${t.item.split(' ')[0].toLowerCase()} da ${NOME_OBRA[t.origem]}, vence em 25 dias`).join('; ')||'nada vencendo'}</div></div>
-      <div class="card kpi"><div class="l">Dias ganhos</div><div class="v" style="color:var(--green)">${dias?`até ${dias} dias`:'—'}</div><div class="s mut">${ativas.length?`chega hoje; comprando, levaria de ${Math.min(...ativas.map(t=>t.dias))} a ${dias} dias`:'—'}</div></div>
-      <div class="card kpi"><div class="l">Compra evitada</div><div class="v">${brl(ativas.reduce((a,t)=>a+t.sug*t.novo,0))}</div><div class="s mut">a preço novo · ${brl2(eco)} a menos pagando custo</div></div>
-    </div>
-    <div class="card" style="margin-bottom:18px"><h3>${icon('spark',17)}Transferências sugeridas</h3>
-      <div class="sm mut" style="margin:-6px 0 12px">Regra: a obra de origem fica com o que ainda vai usar <b>+ uma reserva de metade disso</b>. Só o que passar disso pode sair. O destino precisa = precisa − saldo − a caminho.</div>
-      <table><tr><th>Item</th><th>De → para</th><th class="num">Saldo na origem</th><th class="num">Origem ainda usa</th><th class="num">Reserva</th><th class="num">Pode sair</th><th class="num">Destino precisa</th><th class="num">Preço de custo</th><th class="num">Total</th><th></th></tr>
-      ${ativas.map(t=>`<tr><td><b>${t.item}</b>${t.perda?`<div class="sm row" style="gap:5px;color:var(--amber)">${icon('hourglass',13)}vence em 25 dias na origem</div>`:''}</td>
-        <td class="sm">${NOME_OBRA[t.origem]}<br><span class="mut">→</span> <b>${NOME_OBRA[t.destino]}</b></td>
-        <td class="num">${num(t.saldo)}</td><td class="num">${num(t.usar)}</td><td class="num">${num(t.reserva)}</td><td class="num"><b>${num(t.max)}</b></td><td class="num">${num(t.falta)}</td>
-        <td class="num">${brl2(t.custo)}<div class="sm mut">novo: ${brl2(t.novo)}</div></td><td class="num"><b>${brl2(t.sug*t.custo)}</b><div class="sm mut">${num(t.sug)} ${t.un}</div></td>
-        <td><button class="btn amb sm" onclick="openTransfer('${t.inv}')">Transferir</button></td></tr>`).join('')||`<tr><td colspan="10" class="mut">Nenhuma sugestão pendente: as transferências pedidas estão no histórico, aguardando o OK da origem.</td></tr>`}</table></div>
-    <div class="grid" style="grid-template-columns:1.6fr 1fr">
-      <div class="card"><h3>Histórico</h3><table class="sm"><tr><th>Nº</th><th>Data</th><th>Item</th><th>De → para</th><th class="num">Valor (custo)</th><th>Situação</th></tr>
-        ${TRF_HIST.map(h=>`<tr><td class="mut">${h.id}</td><td>${h.d}</td><td>${h.item} · ${h.q}</td><td>${NOME_OBRA[h.de]} → ${NOME_OBRA[h.para]}</td><td class="num">${brl2(h.v)}</td><td><span class="pill ${h.st==='Recebida'?'ok':'warn'}">${h.st}</span></td></tr>`).join('')}</table></div>
-      <div class="card"><h3>Acerto entre as obras <small>· no orçamento de cada uma</small></h3>
-        <div class="sm mut" style="margin-bottom:10px">Quem cede recebe o valor de volta no orçamento; quem recebe lança como gasto de material.</div>
-        ${['vila-nova','loja-centro'].map(id=>{const v=saldoObra(id); return `<div class="row" style="margin:10px 0;padding-bottom:10px;border-bottom:1px solid var(--line2)"><span>${NOME_OBRA[id]}</span><span class="sp"></span><b style="font:500 18px var(--serif);color:${v>=0?'var(--green)':'var(--red)'}">${v>=0?'+':'−'}${brl2(Math.abs(v))}</b></div>`}).join('')}
-        <div class="sm mut">Positivo: cedeu mais do que recebeu.</div></div>
-    </div>
-  </div>`;
+    ${estoqueCorpo(null, 2)}</div>`;
 }
 /* openTransfer aceita o id do item ('cim','paraf','prego') ou o índice antigo. */
 function acharTransf(k){ recalcTransf(); return typeof k==='number' ? TRANSF[k] : TRANSF.find(t=>t.inv===k); }
@@ -557,34 +1064,35 @@ function openTransfer(k){
   const t=acharTransf(k);
   if(!t||t.sug<=0){ const h=TRF_HIST.find(x=>x.inv===(t?t.inv:k)&&x.st!=='Recebida');
     return toast(h?`${h.item}: ${h.id} já pedida · ${h.st.toLowerCase()}`:'Nenhuma transferência sugerida para este item agora'); }
-  const w=x=>x/t.saldo*100;
-  $('modalBox').innerHTML = `<h2 style="margin:0 0 6px">${icon('swap',20)}Transferir entre obras</h2>
+  const quem=t.resp.split(' (')[0];
+  $('modalBox').innerHTML = `<h2 style="margin:0 0 4px">${icon('swap',20)}${state.view==='obra'&&state.obra===t.origem?`Ceder ${nomeItem(t)} à ${curtaObra(t.destino)}`:`Trazer ${nomeItem(t)} da ${curtaObra(t.origem)}`}</h2>
     <div class="mut sm">${NOME_OBRA[t.origem]} → <b style="color:var(--ink)">${NOME_OBRA[t.destino]}</b> · ${t.item}</div>
-    <div class="card agentnote inline" style="margin:18px 0;font-size:13px;padding:14px 16px">${icon('spark',15)}<div>${t.pq}</div></div>
-    <b class="sm">Quanto pode sair sem prejudicar a ${NOME_OBRA[t.origem]}</b>
-    <div class="split" style="height:20px;margin:10px 0;border-radius:6px"><div style="width:${w(t.usar)}%;background:#a8a497" title="ainda vai usar"></div><div style="width:${w(t.reserva)}%;background:#d6d2c5" title="reserva"></div><div style="width:${w(t.max)}%;background:var(--green)" title="pode sair"></div></div>
-    <div class="legend"><span><i style="background:#a8a497"></i>ainda vai usar: ${num(t.usar)}</span><span><i style="background:#d6d2c5"></i>reserva: ${num(t.reserva)}</span><span><i style="background:var(--green)"></i>pode sair: <b>${num(t.max)}</b> de ${num(t.saldo)} ${t.un}</span></div>
-    <div class="grid g2" style="margin-top:6px;gap:0 14px">
-      <div><label class="l">Quantidade (máx. ${num(t.max)})</label><input class="f" id="tq" type="number" min="1" max="${t.max}" value="${t.sug}" oninput="trfCalc('${t.inv}')"></div>
-      <div><label class="l">Transporte</label><select class="f"><option>Caminhão da construtora (hoje, 15h)</option><option>Equipe da obra destino retira</option><option>Frete terceirizado</option></select></div>
+    <div class="sup-dconta" id="tconta"></div>
+    <p class="sm sup-pq">${icon('spark',14)}<span>${t.pq}</span></p>
+    <h3 class="sup-dh">Quanto pode sair sem faltar na ${curtaObra(t.origem)}</h3>
+    ${barraCap(t)}
+    <div class="grid g2" style="margin-top:12px;gap:0 16px">
+      <div><label class="l" for="tq">Quantidade (máx. ${num(t.max)} ${t.un})</label><input class="f" id="tq" type="number" min="1" max="${t.max}" value="${t.sug}" oninput="trfCalc('${t.inv}')"></div>
+      <div><label class="l" for="ttr">Transporte</label><select class="f" id="ttr"><option>Caminhão da construtora (hoje, 15h)</option><option>Equipe da obra destino retira</option><option>Frete terceirizado</option></select></div>
     </div>
     <div id="tcalc"></div>
-    <div class="sm mut" style="margin-top:12px">Preço de custo do lote original: <b>${t.lote}</b>. Precisa do OK de <b>${t.resp}</b>; o pedido fica pendente até lá.</div>
-    <div class="callout val" style="margin:16px 0 0">${icon('flask')}<div><b>Validar:</b> a reserva de "metade do que ainda vai usar" é conservadora o bastante? Ele quer ajustar por item (cimento ≠ parafuso)?</div></div>
-    <div class="row" style="margin-top:22px"><span class="sp"></span><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn amb" onclick="confirmTransfer('${t.inv}')">Pedir transferência</button></div>`;
+    ${val('A reserva de "metade do que ainda vai usar" é conservadora o bastante? Ele quer ajustar por item (cimento ≠ parafuso)?')}
+    <div class="row"><span class="sm mut">Vai para ${quem} aprovar · preço do lote ${t.lote.split(' · ')[0]}</span><span class="sp"></span><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn amb" id="tok" onclick="confirmTransfer('${t.inv}')">Pedir transferência</button></div>`;
   $('modal').classList.add('on'); trfCalc(t.inv);
 }
 function trfQtd(t){ return Math.min(t.max, Math.max(0, Math.round(+$('tq').value||0))); }
 function trfCalc(k){
   const t=acharTransf(k); if(!t) return;
-  const q=trfQtd(t), resto=Math.max(0,t.falta-q);
-  $('tcalc').innerHTML = `<table class="sm" style="margin-top:16px">
-    <tr><th></th><th class="num">Transferir</th><th class="num">Comprar novo</th></tr>
+  const q=trfQtd(t), c=contaDe(t.destino,t.inv), resto=Math.max(0,t.falta-q), cot=emCotacao(t.destino,t.inv);
+  $('tconta').innerHTML = linhaConta({...c, transf:q, falta:undefined, comprar:undefined, fonte:`na ${NOME_OBRA[t.destino]}, com ${num(q)} ${t.un} desta transferência`});
+  $('tok').textContent = q ? `Pedir transferência de ${num(q)} ${t.un}` : 'Pedir transferência';
+  $('tcalc').innerHTML = `<table class="sm trf-cmp" style="margin-top:16px"><thead>
+    <tr><th></th><th class="num">Transferir</th><th class="num">Comprar novo</th></tr></thead><tbody>
     <tr><td>Preço por ${t.un}</td><td class="num">${brl2(t.custo)}</td><td class="num">${brl2(t.novo)} <span class="mut">(${t.novoForn})</span></td></tr>
     <tr><td>Total de ${num(q)} ${t.un}</td><td class="num"><b>${brl2(q*t.custo)}</b></td><td class="num">${brl2(q*t.novo)}</td></tr>
     <tr><td>Chega em</td><td class="num"><b>hoje</b></td><td class="num">${t.novoPrazo}</td></tr>
-    <tr><td>No orçamento</td><td class="num" colspan="2"><span style="color:var(--red)">${NOME_OBRA[t.destino]} −${brl2(q*t.custo)}</span> · <span style="color:var(--green)">${NOME_OBRA[t.origem]} +${brl2(q*t.custo)}</span></td></tr>
-    </table>${resto>0?`<div class="sm" style="margin-top:8px">Ainda faltam <b>${num(resto)} ${t.un}</b> na ${NOME_OBRA[t.destino]}${(()=>{const c=emCotacao(t.destino,t.inv); return c?`: já estão no ${c.id} (em cotação).`:': o agente inclui no próximo pedido de compra.';})()}</div>`:''}`;
+    <tr><td>No orçamento</td><td class="num" colspan="2">${curtaObra(t.destino)} lança ${brl2(q*t.custo)} de material · ${curtaObra(t.origem)} recebe ${brl2(q*t.custo)} de volta</td></tr>
+    </tbody></table>${resto>0?`<p class="sm" style="margin:8px 0 0">Ainda faltam <b>${num(resto)} ${t.un}</b> na ${NOME_OBRA[t.destino]}${cot?`: já estão no ${docRef(cot.id)} (em cotação).`:`: o agente inclui no próximo pedido de compra. <a href="#" class="link" onclick="closeModal();go('obra','${t.destino}','componentes');return false">ver em Falta comprar ${icon('arrowRight',13)}</a>`}</p>`:''}`;
 }
 function confirmTransfer(k){
   const t=acharTransf(k); if(!t) return closeModal();
@@ -599,19 +1107,28 @@ function confirmTransfer(k){
   render();
 }
 
-/* Mapa de fluxos */
+/* Mapa de fluxos: os 14 do FLUXOS.md (mesma numeração), agrupados pelos blocos do roteiro da conversa. */
+const FLUXOS = [
+  {n:1,  t:'Briefing do dia', d:'6 coisas pedem você hoje, cada uma com Aprovar, Ajustar e Desfazer', onde:'Início', ir:"go('home')", b:0},
+  {n:2,  t:'Aprovações e registro', d:'fila de propostas de todas as obras; quem aprovou o quê, de onde veio, desfazer', onde:'Aprovações', ir:"go('aprovacoes')", b:0},
+  {n:3,  t:'WhatsApp do mestre', d:'o áudio vira baixa de material, diário, causa de atraso e avanço; o mestre confirma num toque', onde:'Campo · WhatsApp', ir:"go('campo')", b:1},
+  {n:12, t:'Diário de obra (RDO)', d:'montado do áudio, das fotos e do clima, cada fato com a sua fonte; PDF para o cliente', onde:'Execução › Diário', ir:"go('obra','vila-nova','diario')", b:1},
+  {n:10, t:'Equipe', d:'chamada do dia, ASO, EPI e NR-18, vaga de armador e o impacto no prazo', onde:'Execução › Equipe', ir:"go('obra','vila-nova','equipe')", b:1},
+  {n:7,  t:'Insumos e pedido de compra', d:'falta = precisa − saldo − a caminho; fornecedor comparado; alçada; envio por WhatsApp', onde:'Suprimentos › Falta comprar', ir:"go('obra','vila-nova','componentes')", b:2},
+  {n:8,  t:'Pedidos', d:'Em cotação → Aprovado → Pedido enviado → Em trânsito → Recebido', onde:'Suprimentos › Pedidos', ir:"go('obra','vila-nova','kanban')", b:2},
+  {n:4,  t:'Recebimento por NF-e', d:'pedido × NF × recebido (areia: 40 na NF, 36 na caçamba) e abatimento de R$ 472 no boleto', onde:'Suprimentos › Pedidos › Conferir NF', ir:"typeof openConferencia==='function'?openConferencia('PED-0157'):go('obra','vila-nova','kanban')", b:2},
+  {n:9,  t:'Almoxarifado', d:'saldo, a caminho, falta e curva ABC; bloco com 15% de quebra contra 5% previstos', onde:'Suprimentos › Almoxarifado', ir:"go('obra','vila-nova','inventario')", b:2},
+  {n:14, t:'Estoque entre obras', d:'transferir sobra a preço de custo sem prejudicar a obra de origem', onde:'Estoque entre obras', ir:"go('estoque')", b:2},
+  {n:13, t:'Medição de empreiteiro', d:'contratado × executado × pago; Equipe Silva: pago 75%, executado 62%', onde:'Custos › Medições', ir:"go('obra','vila-nova','medicoes')", b:2},
+  {n:5,  t:'Criar obra e orçar', d:'planilha, estimativa por m² (CUB/SINAPI) ou extração do PDF, com selo de confiança', onde:'+ Nova obra', ir:'openWizard(1)', b:3},
+  {n:6,  t:'Orçamento com fonte', d:'cada linha com origem e confiança, BDI e encargos, economias que se escolhem e se desfazem', onde:'Custos › Orçamento', ir:"go('obra','vila-nova','overview')", b:3},
+  {n:11, t:'Prazos', d:'planejado × real, atraso por causa, plano que leva o atraso de 21 para 6 dias', onde:'Execução › Cronograma', ir:"go('obra','vila-nova','prazos')", b:3},
+];
+const BLOCOS_FLUXO = ['Briefing e aprovações','Celular do mestre','NF, almoxarifado e medição','Orçamento e prazos'];
 function renderFluxos(){
-  const F=[
-    ['1. Criar obra e orçar','Obras → + Nova obra → anexar projeto → descrever → orçamento, prazo e fases → agente levanta insumos e cota na região → Visão geral: "o orçamento é realista?" + economias',"openWizard(1)"],
-    ['2. Do orçamento ao pedido de compra','Insumos e compras → falta comprar (precisa − saldo − a caminho) → comparar fornecedores → pedido de compra → cartão em Pedidos',"go('obra','vila-nova','componentes')"],
-    ['3. Acompanhar os pedidos','Pedidos: Em cotação → Aprovado → Pedido enviado → Em trânsito → Recebido → Conferir NF · atraso marcado e alimentando Prazos',"go('obra','vila-nova','kanban')"],
-    ['4. Almoxarifado (entra, sai, para onde)','Recebido e conferido vira entrada → baixa com destino nos itens curva A (bloco: 1.050 assentados, 190 quebrados) → contagem semanal na curva C → a caminho e falta por item',"go('obra','vila-nova','inventario')"],
-    ['5. Equipe','Empreitadas e administração própria · efetivo do dia · vagas abertas e impacto no prazo',"go('obra','vila-nova','equipe')"],
-    ['6. Prazos e riscos','Gantt planejado × real → previsão do agente → atraso por causa (fornecedor +9, equipe +8, clima +4) → plano: atraso cai de 21 para 6 dias → o estoque aguenta?',"go('obra','vila-nova','prazos')"],
-    ['7. Estoque entre obras','Agente cruza o que sobra numa obra com o que falta em outra → máximo que pode sair = saldo − o que ainda usa − reserva → transferir a preço de custo → OK do responsável da origem → entra em Pedidos como transferência → acerto no orçamento das duas',"go('estoque')"],
-    ['8. Tudo pelo chat','Início (todas as obras) ou chat da obra (sessões separadas): perguntar, receber resposta com dados + botão de ação (aprovar pedido, remarcar concretagem, transferir)',"go('home')"],
-  ];
-  return `<div class="top"><h1>Mapa de fluxos</h1></div><div class="page"><div class="grid g2">${F.map(f=>`<div class="card wscard" onclick="${f[2]}"><h3>${f[0]}</h3><div class="mut" style="line-height:1.6">${f[1]}</div><div class="link" style="margin-top:12px">abrir no protótipo ${icon('arrowRight',14)}</div></div>`).join('')}</div></div>`;
+  return `<div class="top"><h1>Mapa de fluxos</h1><span class="crumb">${FLUXOS.length} fluxos do FLUXOS.md, na ordem do roteiro da conversa</span></div><div class="page">
+    ${BLOCOS_FLUXO.map((b,i)=>`<section class="card fluxos"><h2>${b}</h2>
+      ${FLUXOS.filter(f=>f.b===i).map(f=>`<button type="button" class="fluxo" onclick="${f.ir}"><span class="fn">${f.n}</span><span><span class="ft">${f.t}</span><span class="fd" style="display:block">${f.d}</span></span><span class="fo">${f.onde}</span>${icon('chevRight',16)}</button>`).join('')}</section>`).join('')}</div>`;
 }
 
 /* ===================== RENDER ===================== */
@@ -624,5 +1141,11 @@ function render(){
   const m=$('main');
   m.innerHTML=(VIEWS[state.view]||VIEWS.home)();
   m.scrollTop=0;
+  const o = state.view==='obra' && obra(), p=$('painel'), aberto=!!(o && PAINEL.aberto);
+  const ms=p.querySelector('.msgs'), y=ms&&p.dataset.obra===state.obra ? ms.scrollTop : null;
+  document.querySelector('.app').classList.toggle('com-painel', aberto);
+  p.innerHTML = aberto ? tabChat(o) : ''; p.dataset.obra = aberto ? o.id : '';
+  if(aberto){ const n=p.querySelector('.msgs'); n.scrollTop = y ?? n.scrollHeight; }
   document.dispatchEvent(new Event('rendered'));
 }
+

@@ -72,23 +72,23 @@ const ADM = {
 
 /* Insumos (lista gerada do projeto). qtd = quantidade da obra inteira; o que falta comprar sai do almoxarifado. */
 const COMP = [
-  {id:'concreto', nome:'Concreto usinado fck 25 MPa (com bomba lança)', un:'m³', qtd:100, fase:'Fundação / Estrutura',
+  {id:'concreto', nome:'Concreto usinado fck 25', espec:'25 MPa · com bomba lança', un:'m³', qtd:100, fase:'Fundação / Estrutura',
    forn:[{n:'Concrecamp',cid:'Campinas',p:485,prazo:'agendar 48 h',nota:4.6},{n:'Supermix',cid:'Campinas',p:498,prazo:'agendar 48 h',nota:4.5},{n:'Polimix',cid:'Hortolândia',p:512,prazo:'agendar 72 h',nota:4.4}]},
   {id:'aco', nome:'Aço CA-50 cortado e dobrado', un:'kg', qtd:8600, fase:'Fundação / Estrutura',
    forn:[{n:'Gerdau Distribuidor Hortolândia',cid:'Hortolândia',p:7.90,prazo:'5 dias',nota:4.5},{n:'Aço Forte Comercial',cid:'Campinas',p:8.40,prazo:'2 dias',nota:4.1},{n:'Armafer Campinas',cid:'Campinas',p:8.15,prazo:'4 dias',nota:4.3}]},
   {id:'bloco', nome:'Bloco cerâmico 14×19×29', un:'un', qtd:14440, fase:'Alvenaria',
    forn:[{n:'Cerâmica Itu Direto',cid:'Itu',p:1.62,prazo:'7 dias',nota:4.2},{n:'Depósito São Bento',cid:'Campinas',p:1.89,prazo:'2 dias',nota:4.6},{n:'Olaria Sumaré',cid:'Sumaré',p:1.74,prazo:'4 dias',nota:4.0}]},
-  {id:'cim', nome:'Cimento CP-II-E-32 50 kg (argamassa)', un:'sc', qtd:474, fase:'Alvenaria / Reboco',
+  {id:'cim', nome:'Cimento CP-II 50 kg', espec:'CP-II-E-32 · argamassa', un:'sc', qtd:474, fase:'Alvenaria / Reboco',
    forn:[{n:'Depósito São Bento',cid:'Campinas',p:36.90,prazo:'2 dias',nota:4.6},{n:'Leroy Merlin D. Pedro',cid:'Campinas',p:38.49,prazo:'3 dias',nota:4.3},{n:'Casa do Construtor Sousas',cid:'Campinas',p:39.80,prazo:'1 dia',nota:4.8}]},
-  {id:'areia', nome:'Areia média lavada', un:'m³', qtd:95, fase:'Alvenaria / Reboco',
+  {id:'areia', nome:'Areia média', espec:'lavada', un:'m³', qtd:95, fase:'Alvenaria / Reboco',
    forn:[{n:'Porto de Areia Jaguari',cid:'Paulínia',p:118,prazo:'1 dia',nota:4.4},{n:'Depósito São Bento',cid:'Campinas',p:135,prazo:'1 dia',nota:4.6}]},
   {id:'brita', nome:'Brita 1', un:'m³', qtd:32, fase:'Contrapiso',
    forn:[{n:'Pedreira Basalto Campinas',cid:'Campinas',p:112,prazo:'1 dia',nota:4.5},{n:'Depósito São Bento',cid:'Campinas',p:129,prazo:'1 dia',nota:4.6}]},
-  {id:'paraf', nome:'Parafuso sextavado 5/16" × 2" zincado', un:'un', qtd:1380, fase:'Esquadrias / Cobertura',
+  {id:'paraf', nome:'Parafuso 5/16" × 2"', espec:'sextavado, zincado', un:'un', qtd:1380, fase:'Esquadrias / Cobertura',
    forn:[{n:'Ciser Distribuidor',cid:'Campinas',p:0.42,prazo:'3 dias',nota:4.7},{n:'Leroy Merlin D. Pedro',cid:'Campinas',p:0.59,prazo:'1 dia',nota:4.3},{n:'Ferragens Paulista',cid:'Valinhos',p:0.48,prazo:'2 dias',nota:4.5}]},
   {id:'telha', nome:'Telha cerâmica portuguesa', un:'un', qtd:3900, fase:'Cobertura',
    forn:[{n:'Telhas Tatuí',cid:'Tatuí',p:2.35,prazo:'10 dias',nota:4.3},{n:'Telhanorte Barão',cid:'Campinas',p:2.98,prazo:'3 dias',nota:4.4}]},
-  {id:'fio', nome:'Cabo flexível 2,5 mm² (rolo 100 m)', un:'rolo', qtd:22, fase:'Instalações',
+  {id:'fio', nome:'Cabo flexível 2,5 mm²', espec:'rolo de 100 m', un:'rolo', qtd:22, fase:'Instalações',
    forn:[{n:'Elétrica Central',cid:'Campinas',p:189,prazo:'2 dias',nota:4.6},{n:'Leroy Merlin D. Pedro',cid:'Campinas',p:214,prazo:'1 dia',nota:4.3}]},
 ];
 
@@ -104,7 +104,7 @@ const LOTES = [
   {id:'PED-0158', inv:'aco', qn:3200, un:'kg', item:'Aço CA-50 cortado e dobrado', q:'3.200 kg', forn:'Gerdau Hortolândia', v:25280, eta:'previsto 19/10 · 9 dias atrasado, sem data', col:3, late:true},
   {id:'PED-0160', inv:'cim', qn:120, un:'sc', item:'Cimento CP-II 50 kg', q:'120 sc', forn:'Depósito São Bento', v:4428, eta:'chega 30/10', col:3},
   {id:'PED-0162', inv:'bloco', qn:9000, un:'un', item:'Bloco cerâmico 14×19×29', q:'9.000 un', forn:'Cerâmica Itu', v:14580, eta:'saída 31/10', col:2, palete:false},
-  {id:'PED-0166', inv:'concreto', qn:38, un:'m³', item:'Concreto usinado fck 25 + bomba lança', q:'38 m³', forn:'Concrecamp', v:19830, eta:'concretagem qui 05/11 07h', col:1},
+  {id:'PED-0166', inv:'concreto', qn:38, un:'m³', item:'Concreto usinado fck 25', q:'38 m³', forn:'Concrecamp', v:19830, eta:'concretagem qui 05/11 07h', col:1},
   {id:'PED-0163', inv:'telha', qn:3900, un:'un', item:'Telha cerâmica portuguesa', q:'3.900 un', forn:'Telhas Tatuí', v:9165, eta:'cotado · aguarda sua aprovação', col:0},
   {id:'PED-0164', inv:'fio', qn:22, un:'rolo', item:'Cabo flexível 2,5 mm²', q:'22 rolos', forn:'Elétrica Central', v:4158, eta:'cotação com 3 fornecedores', col:0},
   {id:'PED-0165', inv:'paraf', qn:80, un:'un', item:'Parafuso 5/16" × 2"', q:'80 un', forn:'Ciser Distribuidor', v:34, eta:'o que a transferência não cobre', col:0, ai:true},
@@ -264,10 +264,38 @@ function insumo(id){ for(const d of Object.values(DADOS)){ const c=d.comp.find(x
 
 /* A caminho = pedidos de Aprovado em diante que ainda não foram conferidos (recebido: vale o medido, não a NF). */
 function aCaminho(obraId, invId){ return dados(obraId).lotes.filter(l=>l.inv===invId && l.col>=1 && !l.conf).reduce((a,l)=>a+(l.medido??l.qn??0),0); }
+/* Em cotação = pedidos na 1ª coluna (ainda não aprovados). emCotacao devolve o 1º pedido; cotando, a quantidade somada. */
 function emCotacao(obraId, invId){ return dados(obraId).lotes.find(l=>l.inv===invId && l.col===0); }
+function cotando(obraId, invId){ return dados(obraId).lotes.filter(l=>l.inv===invId && l.col===0).reduce((a,l)=>a+(l.qn??0),0); }
 function saldoDe(obraId, invId){ const i=dados(obraId).inv.find(x=>x.id===invId); return i? i.ent-i.sai : 0; }
-/* Regra de toda sugestão: falta = precisa − saldo − a caminho. Nunca sugerir comprar o que já está pedido. */
-function faltaDe(obraId, invId){ const i=dados(obraId).inv.find(x=>x.id===invId); return i? Math.max(0, i.nec-(i.ent-i.sai)-aCaminho(obraId,invId)) : 0; }
+/* Regra de toda sugestão (erro 1, compra em dobro): falta = precisa − saldo − a caminho − em cotação.
+   O que já está em cotação não volta para o pedido de compra; se a cotação for recusada, a falta reaparece. */
+function faltaDe(obraId, invId){ const i=dados(obraId).inv.find(x=>x.id===invId); return i? Math.max(0, i.nec-(i.ent-i.sai)-aCaminho(obraId,invId)-cotando(obraId,invId)) : 0; }
+/* A linha de conta de um insumo, a mesma em tabela, drawer, pedido de compra e modal de transferência:
+   precisa − saldo − a caminho − em cotação − transferência = falta → comprar. Passe direto para linhaConta(contaDe(...)).
+   falta e comprar já descontam a transferência sugerida; faltaSemTransf (= faltaDe) é antes dela.
+   Insumo que ainda não está no almoxarifado (telha, cabo): precisa = quantidade do projeto, saldo 0.
+   Campos extras: cot (1º pedido em cotação), tr (transferência sugerida), nome, un, item (do almoxarifado ou null). */
+function contaDe(obraId, invId){
+  const d=dados(obraId), i=d.inv.find(x=>x.id===invId), c=d.comp.find(x=>(x.inv||x.id)===invId);
+  const precisa=i? i.nec : (c? c.qtd : 0), saldo=i? i.ent-i.sai : 0;
+  const caminho=i? aCaminho(obraId,invId) : d.lotes.filter(l=>l.inv===invId&&l.col>=1).reduce((a,l)=>a+(l.receb??l.medido??l.qn??0),0);
+  const cot=cotando(obraId,invId), falta=Math.max(0, precisa-saldo-caminho-cot);
+  const tr=TRANSF.find(t=>t.inv===invId&&t.destino===obraId&&t.sug>0), transf=tr? Math.min(tr.sug,falta) : 0;
+  return {precisa, saldo, aCaminho:caminho, cotando:cot, transf, falta:falta-transf, comprar:falta-transf, faltaSemTransf:falta, un:(i||c||{}).un||'',
+    cot:emCotacao(obraId,invId), tr, nome:(i||c||{}).nome||invId, item:i||null};
+}
+/* Duração do estoque em dias, lida do mesmo texto da coluna "Dura" (erro 2: nunca da marcação st).
+   "≈ 6 dias" → 6 · "até ~30/10" → dias até a data · "acabou" → 0 · "> 30 dias" → 31 · sem consumo contínuo → null. */
+const HOJE = {d:28, m:10};
+function duraDias(i){
+  const t=String(i&&i.cob||'');
+  if(/acabou/.test(t)) return 0;
+  let m=t.match(/>\s*(\d+)/); if(m) return +m[1]+1;
+  m=t.match(/(\d{1,2})\/(\d{1,2})/); if(m) return Math.max(0, Math.round((new Date(2026,+m[2]-1,+m[1])-new Date(2026,HOJE.m-1,HOJE.d))/864e5));
+  m=t.match(/(\d+)\s*dia/); if(m) return +m[1];
+  return null;
+}
 
 /* Estoque entre obras: o máximo que sai da origem é saldo − o que ela ainda vai usar − reserva
    (metade do que ela ainda vai usar). O preço é o do lote original, não o de mercado.

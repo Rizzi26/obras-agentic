@@ -62,49 +62,57 @@ function campoPlay(){
   render();
 }
 
-const wa = (lado, hora, html, extra='') => `<div class="wa-m ${lado} ${extra}"><div class="wa-b">${html}<span class="wa-h">${hora}${lado==='eu'?icon('checks',13):''}</span></div></div>`;
+const wa = (lado, hora, html, extra='') => `<div class="wa-m ${lado} ${extra}"><div class="wa-b">${html}<span class="wa-h">${hora}${lado==='eu'?icon('checks',14):''}</span></div></div>`;
 
-function entendi(){
-  const b=CAMPO.blocos, q=CAMPO.quebra, tot=b+q, sb=CAMPO.antes?CAMPO.antes.bloco:saldo('bloco'), sc=CAMPO.antes?CAMPO.antes.cim:saldo('cim'), pq=Math.round(q/tot*100), av=avanco(b);
-  return `<b>Entendi isto do seu áudio e das fotos:</b>
-  <ol class="wa-ol">
-    <li><b>Baixa de ${tot} blocos</b> (${b} assentados + ${q} de quebra) · alvenaria do térreo, eixo B. Saldo ${fmt(sb)} → <b>${fmt(sb-tot)}</b>.<br><span class="wa-obs">Quebra hoje ${pq}%, contra 5% previsto.</span></li>
-    <li><b>Baixa de ${CAMPO.cim} sc de cimento</b> · argamassa da alvenaria do térreo. Saldo ${sc} → <b>${sc-CAMPO.cim} sc</b>.</li>
-    <li><b>RDO de 28/10</b>: 7 pessoas (você, Equipe Silva 4, Carlos, 1 ajudante) · manhã de sol, chuva forte 15h–17h · ${b} blocos no eixo B · foto anexada.</li>
-    <li><b>Causa de atraso: clima</b> · alvenaria parada 2 h.</li>
-    <li><b>Avanço da alvenaria</b>: ${av.p0}% → ${av.p1}% (blocos assentados ${fmt(av.A)} → ${fmt(av.A+b)} de ${fmt(av.total)}).</li>
-    <li><b>Aço Gerdau (PED-0158)</b>: segue sem data, 9 dias atrasado. Saldo de 140 kg dá até ~30/10.</li>
-  </ol>`;
+/* ---------- o que o agente entendeu: "Vou gravar" (cada linha sai com um toque) e "Para você saber" ---------- */
+CAMPO.fora = new Set();
+function itensGravar(){
+  const b=CAMPO.blocos, q=CAMPO.quebra, tot=b+q, A=CAMPO.antes, sb=A?A.bloco:saldo('bloco'), sc=A?A.cim:saldo('cim'), av=avanco(b);
+  return [
+    {k:'bloco', tit:`Bloco −${fmt(tot)}`, det:`${b} assentados + ${q} quebrados · eixo B · saldo ${fmt(sb)} → ${fmt(sb-tot)}`},
+    {k:'cim', tit:`Cimento −${CAMPO.cim} sc`, det:`argamassa da alvenaria · saldo ${sc} → ${sc-CAMPO.cim} sc`},
+    {k:'rdo', tit:'RDO de 28/10', det:`7 pessoas · sol de manhã, chuva 15h–17h · ${b} blocos no eixo B · foto`},
+    {k:'atraso', tit:'Atraso: clima', det:'alvenaria parada 2 h pela chuva'},
+    {k:'avanco', tit:`Alvenaria ${av.p0}% → ${av.p1}%`, det:`${fmt(av.A)} → ${fmt(av.A+b)} de ${fmt(av.total)} blocos assentados`},
+  ];
+}
+const vai = k => !CAMPO.fora.has(k);
+function campoTirar(k){ CAMPO.fora.has(k)?CAMPO.fora.delete(k):CAMPO.fora.add(k); render(); }
+function entendi(editavel){
+  const q=CAMPO.quebra, pq=Math.round(q/(CAMPO.blocos+q)*100), its=itensGravar();
+  return `${pq>5?`<div class="wa-alerta">${icon('alert',16)}<span>Quebra hoje <b>${pq}%</b>, contra 5% previsto</span></div>`:''}
+  <div class="wa-sec">${editavel?'Vou gravar':'Gravado'}</div>
+  <ul class="wa-grav">${its.filter(x=>editavel||vai(x.k)).map(x=>`<li class="${vai(x.k)?'':'fora'}"><div><b>${x.tit}</b><span>${x.det}</span></div>${editavel?`<button type="button" class="wa-x" onclick="campoTirar('${x.k}')" aria-label="${vai(x.k)?'Não gravar':'Gravar de novo'}: ${x.tit}">${vai(x.k)?icon('x',18):'voltar'}</button>`:''}</li>`).join('')}</ul>
+  <div class="wa-sec">Para você saber</div>
+  <p class="wa-saber">Aço da Gerdau (PED-0158) segue sem data, 9 dias atrasado. O saldo de 140 kg dá até ~30/10.</p>`;
 }
 
 function conversa(){
-  const c=CAMPO;
+  const c=CAMPO, n=itensGravar().filter(x=>vai(x.k)).length;
   let h = `<div class="wa-dia">hoje</div>
     ${wa('eu','17:31',`${fotoNF()}<div>Chegou a areia. Medi na caçamba, deu 36</div>`)}
     ${wa('ag','17:31',`Li a NF-e da <b>Porto Jaguari (PED-0157)</b>: 40 m³ de areia média, R$ 4.720. Você mediu 36 m³ → faltam <b>4 m³ = R$ 472</b> a abater do boleto.
-      <div class="wa-acts"><button class="wa-btn pri" onclick="openConferencia('PED-0157')">Conferir recebimento</button></div>`)}
+      <div class="wa-acts"><button class="wa-btn pri" onclick="openConferencia('PED-0157')">Conferir a NF</button></div>`)}
     ${wa('eu','17:40',waAudio())}
     ${wa('eu','17:41',`${fotoServico()}`)}`;
   if(c.st==='pendente' && !c.corrigindo){
-    h += wa('ag','17:41',`${entendi()}<div class="wa-q">Posso gravar?</div>
-      <div class="wa-acts"><button class="wa-btn pri" onclick="campoConfirmar()">${icon('check',14)}Confirmar</button><button class="wa-btn" onclick="CAMPO.corrigindo=true;render()">Corrigir</button></div>`);
+    h += wa('ag','17:41',`<b>Entendi isto do seu áudio e das fotos.</b> Toque no × para tirar o que não vale.${entendi(true)}
+      <div class="wa-acts col"><button class="wa-btn pri big" onclick="campoConfirmar()"${n?'':' disabled'}>${icon('check',18)}${n?`Confirmar e gravar ${n}`:'Nada para gravar'}</button><button class="wa-btn" onclick="CAMPO.corrigindo=true;render()">Corrigir os números</button></div>`);
   } else if(c.corrigindo){
-    h += wa('ag','17:41',`${entendi()}`);
+    const passo=(id,l,v)=>`<div class="wa-fix-l"><label for="${id}">${l}</label><div class="wa-step"><button type="button" class="wa-btn" aria-label="Menos" onclick="campoPasso('${id}',-1)">${icon('minus',18)}</button><input id="${id}" type="number" min="0" inputmode="numeric" value="${v}"><button type="button" class="wa-btn" aria-label="Mais" onclick="campoPasso('${id}',1)">${icon('plus',18)}</button></div></div>`;
     h += wa('ag','17:42',`O que ficou errado? Ajuste aqui ou mande outro áudio.
-      <div class="wa-fix"><label>Blocos assentados<input type="number" min="0" value="${c.blocos}" id="cfB"></label>
-        <label>Blocos quebrados<input type="number" min="0" value="${c.quebra}" id="cfQ"></label>
-        <label>Cimento (sc)<input type="number" min="0" value="${c.cim}" id="cfC"></label></div>
-      <div class="wa-acts"><button class="wa-btn pri" onclick="campoAjustar()">${icon('check',14)}Confirmar com ajuste</button><button class="wa-btn" onclick="CAMPO.corrigindo=false;render()">Cancelar</button></div>`);
+      <div class="wa-fix">${passo('cfB','Blocos assentados',c.blocos)}${passo('cfQ','Blocos quebrados',c.quebra)}${passo('cfC','Cimento (sacos)',c.cim)}</div>
+      <div class="wa-acts col"><button class="wa-btn pri big" onclick="campoAjustar()">${icon('check',18)}Confirmar com ajuste</button><button class="wa-btn" onclick="CAMPO.corrigindo=false;render()">Voltar sem mudar</button></div>`);
   } else {
-    h += wa('ag','17:41',entendi(),'feito');
     h += wa('eu','17:42','Confirmar');
-    h += wa('ag','17:42',`<b>Gravado.</b> Blocos: saldo <b>${fmt(saldo('bloco'))}</b> · cimento: <b>${saldo('cim')} sc</b> (120 sc chegam 30/10, PED-0160). RDO de hoje preenchido.
-      <div class="wa-acts"><button class="wa-btn pri" onclick="go('obra','vila-nova','diario')">${icon('book',14)}Abrir RDO de 28/10</button><button class="wa-btn" onclick="go('obra','vila-nova','inventario')">Ver almoxarifado</button></div>`);
+    h += wa('ag','17:42',`${entendi(false)}<p class="wa-ok">${icon('checkCircle',16)}<span>Gravado às ${c.hora||'17:42'}.${vai('bloco')?` Blocos: saldo <b>${fmt(saldo('bloco'))}</b>.`:''}${vai('cim')?` Cimento: <b>${saldo('cim')} sc</b> (120 sc chegam 30/10, PED-0160).`:''}</span></p>
+      <div class="wa-acts col">${vai('rdo')||vai('atraso')?`<button class="wa-btn pri" onclick="go('obra','vila-nova','diario')">${icon('book',16)}Abrir RDO de 28/10</button>`:''}<button class="wa-btn" onclick="go('obra','vila-nova','inventario')">Ver almoxarifado</button></div>`);
   }
   return h;
 }
 
 /* ---------- gravar de verdade ---------- */
+function campoPasso(id, d){ const e=$(id); e.value=Math.max(0,(parseInt(e.value,10)||0)+d); }
 function campoAjustar(){
   const n=id=>Math.max(0,parseInt($(id).value,10)||0);
   CAMPO.blocos=n('cfB'); CAMPO.quebra=n('cfQ'); CAMPO.cim=n('cfC'); CAMPO.corrigindo=false;
@@ -112,117 +120,134 @@ function campoAjustar(){
   campoConfirmar();
 }
 function campoConfirmar(){
-  const b=invItem('bloco'), ci=invItem('cim'), f=faseAlv(), tot=CAMPO.blocos+CAMPO.quebra;
+  const ci=invItem('cim'), f=faseAlv(), tot=CAMPO.blocos+CAMPO.quebra;
   const fp=f?f.pct:null, av=avanco(CAMPO.blocos); CAMPO.antes={bloco:saldo('bloco'), cim:saldo('cim'), assent:av.A, total:av.total, fp:av.p0};
-  const v1=gravarBaixa('bloco', tot, 'Alvenaria do térreo · eixo B', 'Joana M. (WhatsApp)');
-  const v2=ci?gravarBaixa('cim', CAMPO.cim, 'Argamassa · alvenaria do térreo', 'Joana M. (WhatsApp)'):()=>{};
-  if(f && f.pct<av.p1) f.pct=av.p1;
-  const o={obra:'vila-nova', origem:'WhatsApp', quem:'Joana M.'};
-  registrar(`Baixa de ${tot} blocos (${CAMPO.blocos} + ${CAMPO.quebra} de quebra) · alvenaria do térreo, eixo B`, o);
-  registrar(`Baixa de ${CAMPO.cim} sc de cimento · argamassa da alvenaria do térreo`, o);
-  registrar('RDO de 28/10 preenchido pelo áudio · chuva 15h–17h parou a alvenaria 2 h (causa de atraso: clima)', o);
+  const o={obra:'vila-nova', origem:'WhatsApp', quem:'Joana M.'}, feito=[];
+  const v1=vai('bloco')?gravarBaixa('bloco', tot, 'Alvenaria do térreo · eixo B', 'Joana M. (WhatsApp)'):()=>{};
+  if(vai('bloco')){ registrar(`Baixa de ${tot} blocos (${CAMPO.blocos} + ${CAMPO.quebra} de quebra) · alvenaria do térreo, eixo B`, o); feito.push(`${tot} blocos`); }
+  const v2=ci&&vai('cim')?gravarBaixa('cim', CAMPO.cim, 'Argamassa · alvenaria do térreo', 'Joana M. (WhatsApp)'):()=>{};
+  if(vai('cim')){ registrar(`Baixa de ${CAMPO.cim} sc de cimento · argamassa da alvenaria do térreo`, o); feito.push(`${CAMPO.cim} sc de cimento`); }
+  if(vai('avanco') && f && f.pct<av.p1) f.pct=av.p1;
+  if(vai('avanco')) registrar(`Avanço da alvenaria ${av.p0}% → ${av.p1}% (${fmt(av.A+CAMPO.blocos)} blocos assentados)`, o);
+  if(vai('rdo')){ registrar('RDO de 28/10 preenchido pelo áudio · 7 pessoas · 180 blocos no eixo B', o); feito.push('RDO de 28/10'); }
+  if(vai('atraso')) registrar('Causa de atraso: clima · chuva 15h–17h parou a alvenaria 2 h', o);
   /* RDO do dia (aba Diário, do Dev Gestão): grava o que a Joana disse; desfaz pelo retorno ou por {desfazer:true} */
-  const fonte='áudio da Joana 17h40', temRDO=typeof atualizarRDO==='function';
+  const fonte='áudio da Joana 17h40', temRDO=typeof atualizarRDO==='function' && (vai('rdo')||vai('atraso'));
   const rdo=temRDO ? atualizarRDO('28/10', {
-    servicos:[{txt:`Alvenaria do térreo · eixo B: ${CAMPO.blocos} blocos assentados`, fonte}],
-    insumos:[{txt:`Bloco cerâmico 14×19×29: ${tot} un (${CAMPO.blocos} + ${CAMPO.quebra} de quebra)`, fonte}, {txt:`Cimento CP-II: ${CAMPO.cim} sc na argamassa`, fonte}],
-    ocorrencias:[{txt:'Chuva forte 15h–17h parou a alvenaria por 2 h (causa de atraso: clima)', fonte}, {txt:'Aço da Gerdau (PED-0158) não chegou', fonte}]}) : null;
+    servicos:vai('rdo')?[{txt:`Alvenaria do térreo · eixo B: ${CAMPO.blocos} blocos assentados`, fonte}]:[],
+    insumos:vai('rdo')?[...(vai('bloco')?[{txt:`Bloco cerâmico 14×19×29: ${tot} un (${CAMPO.blocos} + ${CAMPO.quebra} de quebra)`, fonte}]:[]), ...(vai('cim')?[{txt:`Cimento CP-II: ${CAMPO.cim} sc na argamassa`, fonte}]:[])]:[],
+    ocorrencias:[...(vai('atraso')?[{txt:'Chuva forte 15h–17h parou a alvenaria por 2 h (causa de atraso: clima)', fonte}]:[]), ...(vai('rdo')?[{txt:'Aço da Gerdau (PED-0158) não chegou', fonte}]:[])]}) : null;
   const v3=()=>{ if(!temRDO) return; if(typeof rdo==='function') rdo(); else atualizarRDO('28/10', null, {desfazer:true}); };
-  CAMPO.st='gravado'; render();
-  toastDesfazer(`Gravado: ${tot} blocos e ${CAMPO.cim} sc de cimento · RDO de 28/10`, ()=>{
+  CAMPO.st='gravado'; CAMPO.hora=horaCampo(); render();
+  toastDesfazer(`Gravado: ${feito.join(', ')||'avanço e atraso'}`, ()=>{
     v3(); v2(); v1(); if(f) f.pct=fp; CAMPO.st='pendente'; CAMPO.antes=null; });
 }
+const horaCampo = () => new Date().toTimeString().slice(0,5);
 
 /* ---------- tela ---------- */
-VIEWS.campo = () => {
-  const lote=LOTES.find(l=>l.id==='PED-0157');
-  return `<div class="top campo-top"><div><div class="crumb">Casa Vila Nova · mestre de obras</div><h1>Campo · WhatsApp</h1></div></div>
+/* painel do desktop: o efeito no sistema ao vivo, antes → depois */
+function efeito(){
+  const g=CAMPO.st==='gravado', A=CAMPO.antes, tot=CAMPO.blocos+CAMPO.quebra, av=avanco(CAMPO.blocos), l=LOTES.find(x=>x.id==='PED-0157');
+  const sb=g?A.bloco:saldo('bloco'), sc=g?A.cim:saldo('cim');
+  const lin=(ic,rot,antes,depois,k,link)=>{ const on=!k||vai(k);
+    return `<li>${icon(ic,16)}<div><b>${rot}</b><div class="ef-v"><span>${antes}</span>${on?`${icon('arrowRight',14)}<span class="${g?'ef-ok':'ef-se'}">${depois}</span>`:'<span class="mut">não será gravado</span>'}</div></div>${link||''}</li>`; };
+  return `<section class="card ef"><h2>O que esta conversa alimenta</h2>
+    <p class="mut sm">${g?`${icon('checkCircle',14)} gravado às ${CAMPO.hora} pela Joana`:'aguarda a Joana confirmar · o valor da direita é o que fica'}</p>
+    <ul>
+      ${lin('archive','Almoxarifado · bloco',`${fmt(sb)} un`,`${fmt(g?saldo('bloco'):sb-tot)} un`,'bloco')}
+      ${lin('archive','Almoxarifado · cimento',`${sc} sc`,`${g?saldo('cim'):sc-CAMPO.cim} sc`,'cim')}
+      ${lin('book','RDO de 28/10','vazio','preenchido pelo áudio','rdo',`<a class="link" href="#" onclick="go('obra','vila-nova','diario');return false">abrir</a>`)}
+      ${lin('clock','Causas de atraso','—','clima · 2 h','atraso')}
+      ${lin('chart','Avanço da alvenaria',`${av.p0}%`,`${av.p1}%`,'avanco')}
+      ${lin('receipt','Recebimento PED-0157',l&&l.conf?'conferido':'40 m³ na NF, 36 medidos',l&&l.conf?l.eta:'R$ 472 a abater',null,l&&l.conf?'':`<a class="link" href="#" onclick="openConferencia('PED-0157');return false">conferir</a>`)}
+    </ul></section>`;
+}
+VIEWS.campo = () => `<div class="top campo-top"><div><div class="crumb">Casa Vila Nova · mestre de obras</div><h1>Campo · WhatsApp</h1>
+    <p class="campo-sub">Sem formulário: a Joana manda áudio e foto pelo WhatsApp, como já faz. O agente transforma em baixa, RDO, atraso e avanço, e só grava depois que ela confirma.</p></div></div>
   <div class="page campo-page">
     <div class="campo-wrap">
       <div class="phone"><div class="phone-in">
-        <div class="wa-top"><div class="wa-av">${icon('spark',18)}</div><div><b>Canteiro</b><small>agente da Casa Vila Nova</small></div><span class="sp"></span>
-          <button class="wa-ico" onclick="openBaixa()" aria-label="Registrar saída sem áudio">${icon('minus',18)}</button></div>
+        <div class="wa-top"><div class="wa-av">${icon('spark',18)}</div><div class="wa-id"><b>Canteiro</b><small>agente da Casa Vila Nova</small></div><span class="sp"></span>
+          <button type="button" class="wa-saida" onclick="openBaixa()">${icon('minus',16)}Registrar saída</button></div>
         <div class="wa-body" id="waBody">${conversa()}</div>
-        <div class="wa-comp"><button class="wa-ico" onclick="toast('Abre a câmera para foto de NF ou de serviço (protótipo)')" aria-label="Foto">${icon('camera',20)}</button>
-          <div class="wa-inp">Mensagem</div><button class="wa-mic" onclick="toast('Segure para gravar um áudio (protótipo)')" aria-label="Gravar áudio">${icon('mic',20)}</button></div>
+        <div class="wa-comp"><button type="button" class="wa-ico" onclick="toast('(protótipo) abre a câmera para foto de NF ou de serviço')" aria-label="Foto">${icon('camera',22)}</button>
+          <label class="sr-only" for="waInp">Mensagem</label><input class="wa-inp" id="waInp" type="text" placeholder="Mensagem" enterkeyhint="send" autocomplete="off"><button type="button" class="wa-mic" onclick="toast('(protótipo) segure para gravar um áudio')" aria-label="Gravar áudio">${icon('mic',22)}</button></div>
       </div></div>
       <div class="campo-side">
-        <div class="card agentnote inline" style="font-size:13.5px">${icon('spark',16)}<div><b>Sem formulário.</b> A Joana manda áudio e foto pelo WhatsApp, como já faz hoje. O agente transforma em baixa no almoxarifado, RDO, causa de atraso e avanço, e só grava depois que ela confirma.</div></div>
-        <div class="card"><h3>${icon('file',17)}O que esta conversa alimenta</h3>
-          <div class="campo-li">${icon('archive',15)}<div><b>Almoxarifado</b><div class="sm mut">Bloco: saldo ${fmt(saldo('bloco'))} un · cimento: ${saldo('cim')} sc</div></div><span class="sp"></span><span class="pill ${CAMPO.st==='gravado'?'ok':'warn'}">${CAMPO.st==='gravado'?'gravado':'aguarda a Joana'}</span></div>
-          <div class="campo-li">${icon('book',15)}<div><b>RDO de 28/10</b><div class="sm mut">clima, efetivo, serviço do dia, foto</div></div><span class="sp"></span><a class="link" href="#" onclick="go('obra','vila-nova','diario');return false">abrir</a></div>
-          <div class="campo-li">${icon('clock',15)}<div><b>Causas de atraso</b><div class="sm mut">clima · alvenaria parada 2 h hoje</div></div></div>
-          <div class="campo-li">${icon('receipt',15)}<div><b>Recebimento PED-0157</b><div class="sm mut">${lote&&lote.conf?lote.eta:'40 m³ na NF, 36 recebidos · R$ 472 a abater'}</div></div><span class="sp"></span><a class="link" href="#" onclick="openConferencia('PED-0157');return false">conferir</a></div>
-        </div>
+        ${efeito()}
         ${val('A Joana manda áudio no fim do dia ou ao longo dele? Confirmar no WhatsApp (um toque) é aceitável, ou ela prefere que grave direto e avise?')}
         <p class="sm mut">${icon('phone',14)} Abra esta tela no celular: ela funciona em tela cheia, como a Joana vê.</p>
       </div>
     </div></div>`;
-};
 NAV_EXTRA.push({view:'campo', icon:'phone', label:'Campo · WhatsApp', count:()=>CAMPO.st==='pendente'?1:0});
 ICONS.book = ICONS.book || '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/>';
 
+/* celular: a página vai sob o notch (safe-area) e a barra de status pega a cor do cabeçalho do WhatsApp */
+(()=>{ const v=document.querySelector('meta[name=viewport]'); if(v && !/viewport-fit/.test(v.content)) v.content+=', viewport-fit=cover';
+  if(!document.querySelector('meta[name=theme-color]')){ const m=document.createElement('meta'); m.name='theme-color'; m.content='#e7eaea'; document.head.appendChild(m); } })();
 /* rola a conversa para o fim e libera a rota no celular */
 document.addEventListener('rendered',()=>{
-  document.body.classList.toggle('campo-mode', state.view==='campo');
+  const c=state.view==='campo'; document.body.classList.toggle('campo-mode', c);
+  const t=document.querySelector('meta[name=theme-color]'); if(t) t.content = c ? '#1c2a27' : '#e7eaea';
   const w=$('waBody'); if(w && !CAMPO.play) w.scrollTop=w.scrollHeight;
 });
 
-/* ---------- recebimento por NF-e ---------- */
+/* ---------- recebimento por NF-e: uma ação de conclusão; a divergência é uma escolha dentro dela ---------- */
 const INV_DO_LOTE = l => /areia/i.test(l.item)?'areia':/cimento/i.test(l.item)?'cim':/bloco/i.test(l.item)?'bloco':/brita/i.test(l.item)?'brita':/parafuso/i.test(l.item)?'paraf':/prego/i.test(l.item)?'prego':/vergalh|aço/i.test(l.item)?'aco':null;
+const CONF = {abater:true};
 function openConferencia(idLote){
-  const l=LOTES.find(x=>x.id===idLote); if(!l){ toast('Pedido não encontrado'); return; }
+  const l=LOTES.find(x=>x.id===idLote)||(typeof acharLote==='function'&&(acharLote(idLote)||{}).l); if(!l){ toast('Pedido não encontrado'); return; }
   closeDrawer();
   const {qn, un} = qtdLote(l), areia = idLote==='PED-0157', rec = l.medido ?? (areia?36:qn);
   if(l.conf){
-    $('modalBox').innerHTML = `<h2 style="margin:0 0 6px">${icon('checkCircle',22)}Recebimento ${l.id} já conferido</h2><div class="mut">${l.item} · ${l.eta}</div>
-      <div class="row" style="margin-top:22px"><span class="sp"></span><button class="btn" onclick="closeModal()">Fechar</button></div>`;
-    $('modal').classList.add('on'); return;
+    abrirModal(`<h2>Recebimento ${l.id} já conferido</h2><p class="mut">${l.item} · ${l.eta}</p>
+      <div class="row"><span class="sp"></span>${botao('Fechar', 'closeModal()')}</div>`); return;
   }
-  $('modalBox').innerHTML = `<h2 style="margin:0 0 6px">${icon('receipt',22)}Conferir recebimento · ${l.id}</h2>
-    <div class="mut sm">${l.item} · ${l.forn} · conferido por Joana M. (mestre), que recebe na obra</div>
+  CONF.abater=true;
+  abrirModal(`<h2>Conferir NF · ${l.id}</h2>
+    <p class="mut conf-meta">${l.item} · ${l.forn} · confere Joana M. (mestre), que recebe na obra</p>
+    <div class="conf-nums">
+      <div><span>Na NF</span><b>${fmt(qn)} ${un}</b></div>
+      <div><label for="confRec">Recebido</label><span class="conf-in"><input class="f" id="confRec" type="number" min="0" inputmode="decimal" value="${rec}" oninput="confCalc('${l.id}')"><span>${un}</span></span></div>
+      <div><span>Diferença</span><b id="confDif"></b></div>
+    </div>
+    <div id="confEsc"></div>
     <div class="conf-src">
       <div class="conf-nf">${fotoNF().replace('Areia média lavada', areia?'Areia média lavada':l.item).replace('40,000 M3', areia?'40,000 M3':(fmt(qn)+' '+un).toUpperCase()).replace(/4\.720,00/g, l.v.toLocaleString('pt-BR',{minimumFractionDigits:2}))}</div>
-      <div class="sm"><div class="row" style="gap:6px">${icon('spark',14)}<b>O agente leu a NF-e</b></div>
-        <div class="mut" style="margin:4px 0 10px">Foto da DANFE enviada no WhatsApp às 17:31 · chave conferida na SEFAZ (35261009…4418)</div>
-        <button class="btn sm" onclick="toast('Colar chave de 44 dígitos ou anexar XML (protótipo)')">${icon('upload',14)}Chave ou XML</button>
-        ${areia?`<div class="row" style="gap:6px;margin-top:12px">${icon('camera',14)}<span>Foto da caçamba: 36 m³ medidos</span></div>`:''}</div>
+      <div><p class="conf-li">${chipFonte({origem:'nf', quem:'foto da DANFE no WhatsApp', hora:'17:31'})}</p>
+        <p class="mut conf-li">Chave conferida na SEFAZ (35261009…4418)</p>
+        ${areia?`<p class="conf-li">${icon('camera',15)} Foto da caçamba: 36 m³ medidos</p>`:''}
+        ${botao('Chave ou XML', "toast('(protótipo) colar chave de 44 dígitos ou anexar XML')", {sm:true, icone:'upload'})}</div>
     </div>
-    <div class="card" style="padding:0;margin-top:16px"><table class="conf-tab">
-      <tr><th>Item</th><th class="num">Pedido</th><th class="num">Na NF</th><th class="num">Recebido</th><th class="num">Diferença</th></tr>
-      <tr><td><b>${l.item}</b></td><td class="num">${fmt(qn)} ${un}</td><td class="num">${fmt(qn)} ${un}</td>
-        <td class="num"><input class="f conf-q" id="confRec" type="number" value="${rec}" oninput="confCalc('${l.id}')"></td><td class="num" id="confDif"></td></tr>
-    </table></div>
-    <div id="confMsg" style="margin-top:14px"></div>
-    <div class="row conf-acts" style="margin-top:20px;flex-wrap:wrap"><span class="sp"></span><button class="btn" onclick="closeModal()">Cancelar</button>
-      <button class="btn" id="confAceitar" onclick="confGravar('${l.id}',false)">Aceitar e dar entrada</button>
-      <button class="btn amb" id="confDiv" onclick="confGravar('${l.id}',true)">Registrar divergência e abater do boleto</button></div>`;
-  $('modal').classList.add('on'); confCalc(idLote);
+    <div class="row"><span class="sp"></span><button type="button" class="btn amb" id="confOk" onclick="confGravar('${l.id}')"></button></div>`);
+  confCalc(idLote);
 }
 const qtdLote = l => ({qn: l.qn ?? parseFloat(l.q.replace(/\./g,'').replace(',','.')), un: l.un || l.q.replace(/^[\d.,]+\s*/,'')});
 function confDados(id){
-  const l=LOTES.find(x=>x.id===id), {qn,un}=qtdLote(l);
+  const l=LOTES.find(x=>x.id===id)||acharLote(id).l, {qn,un}=qtdLote(l);
   const rec=Math.max(0,parseFloat($('confRec').value)||0), dif=qn-rec, abat=Math.round(Math.max(0,dif)*l.v/qn);
   return {l,qn,un,rec,dif,abat};
 }
 function confCalc(id){
-  const {un,dif,abat,l,qn}=confDados(id);
-  $('confDif').innerHTML = dif>0?`<b style="color:var(--red)">−${fmt(dif)} ${un}</b>`:dif<0?`<b>+${fmt(-dif)} ${un}</b>`:'<span class="pill ok">bate</span>';
-  $('confMsg').innerHTML = dif>0
-    ? `<div class="card alertnote inline" style="font-size:13px;padding:12px 14px">${icon('alert',15)}<div><b>Faltam ${fmt(dif)} ${un}</b> × ${brl(Math.round(l.v/qn))} = <b>${brl(abat)}</b> a abater do boleto de ${brl(l.v)} (fica ${brl(l.v-abat)}). A foto vai junto para o fornecedor.</div></div>`
-    : `<div class="sm mut">Quantidade confere com a NF. A entrada vai para o almoxarifado.</div>`;
-  $('confDiv').style.display = dif>0?'':'none';
+  const {un,dif,abat,l,qn,rec}=confDados(id);
+  $('confDif').innerHTML = dif>0?`<span class="t-pede">−${fmt(dif)} ${un}</span>`:dif<0?`+${fmt(-dif)} ${un}`:`<span class="t-ok">bate</span>`;
+  $('confEsc').innerHTML = dif>0
+    ? `<fieldset class="conf-esc"><legend class="l">Faltam ${fmt(dif)} ${un} × ${brl(Math.round(l.v/qn))} = ${brl(abat)}. O que fazer?</legend>
+        <label class="ap-op"><input type="radio" name="confAb" ${CONF.abater?'checked':''} onchange="CONF.abater=true;confCalc('${id}')"><span><b>Abater ${brl(abat)} do boleto</b> · fica ${brl(l.v-abat)}; a foto vai para o fornecedor</span></label>
+        <label class="ap-op"><input type="radio" name="confAb" ${CONF.abater?'':'checked'} onchange="CONF.abater=false;confCalc('${id}')"><span>Aceitar sem abater</span></label></fieldset>`
+    : `<p class="mut">Quantidade confere com a NF. A entrada vai para o almoxarifado.</p>`;
+  $('confOk').textContent = dif>0&&CONF.abater ? `Abater ${brl(abat)} e dar entrada de ${fmt(rec)} ${un}` : `Dar entrada de ${fmt(rec)} ${un}`;
 }
-function confGravar(id, abater){
-  const {l,qn,un,rec,dif,abat}=confDados(id), invId=l.inv||INV_DO_LOTE(l), i=invItem(invId), div=abater&&dif>0;
+function confGravar(id){
+  const {l,qn,un,rec,dif,abat}=confDados(id), invId=l.inv||INV_DO_LOTE(l), i=invItem(invId), div=CONF.abater&&dif>0;
   const volta=fotoDe(l, i, movDe(invId));
   const eta=`no almoxarifado · ${fmt(rec)} ${un} recebidos`+(div?` · ${brl(abat)} abatidos do boleto`:'');
   if(typeof darEntrada==='function') darEntrada(id, rec, div?{divergencia:`${fmt(dif)} ${un} a menos que a NF · ${brl(abat)} abatidos do boleto (foto da caçamba)`}:{});
   else { if(i) i.ent+=rec; l.col=KCOLS.length-1; l.conf=true; if(div) l.v-=abat; }
   l.eta=eta; if(div) l.abatido=abat;
-  registrar(`Recebimento ${l.id} · ${l.item}: ${fmt(rec)} ${un} de ${fmt(qn)} ${un} na NF`+(abater&&dif>0?` · divergência registrada, ${brl(abat)} abatidos do boleto`:dif>0?' · aceito sem abatimento':''), {obra:'vila-nova', origem:'WhatsApp', quem:'Joana M.'});
+  registrar(`Recebimento ${l.id} · ${l.item}: ${fmt(rec)} ${un} de ${fmt(qn)} ${un} na NF`+(div?` · divergência registrada, ${brl(abat)} abatidos do boleto`:dif>0?' · aceito sem abatimento':''), {obra:'vila-nova', origem:'WhatsApp', quem:'Joana M.'});
   closeModal(); render();
-  toastDesfazer(abater&&dif>0?`Entrada de ${fmt(rec)} ${un} · ${brl(abat)} a abater do boleto`:`Entrada de ${fmt(rec)} ${un} no almoxarifado`, volta);
+  toastDesfazer(div?`Entrada de ${fmt(rec)} ${un} · ${brl(abat)} a abater do boleto`:`Entrada de ${fmt(rec)} ${un} no almoxarifado`, volta);
 }
 
 /* ---------- registrar saída em 3 toques ---------- */
@@ -234,17 +259,24 @@ function openBaixa(item){
   closeDrawer(); if(item) BX.item=item;
   const usados=['bloco','cim','areia','prego','paraf','brita'].map(invItem).filter(Boolean);
   const it=invItem(BX.item)||usados[0], a=curvaDe(it)==='A';
-  $('modalBox').innerHTML = `<h2 style="margin:0 0 4px">Registrar saída</h2><div class="mut sm">3 toques: item, quantidade, frente de serviço.</div>
-    <label class="l">1 · Item <span class="mut">(os mais usados)</span></label>
-    <div class="bx-chips">${usados.map(x=>`<button class="bx-chip ${x.id===it.id?'on':''}" onclick="BX.item='${x.id}';openBaixa()">${x.nome.replace(/ 50 kg| 14×19×29| 5\/16" × 2"/,'')}<small>saldo ${fmt(x.ent-x.sai)} ${x.un}</small></button>`).join('')}</div>
-    <label class="l">2 · Quantidade <span class="mut">(a última foi ${BX_ULT[it.id]||1})</span></label>
-    <div class="row" style="gap:8px"><input class="f" id="bxQ" type="number" min="1" inputmode="numeric" value="${BX_ULT[it.id]||1}" style="max-width:140px;font-size:17px"><span class="mut">${it.un} · saldo ${fmt(it.ent-it.sai)}</span></div>
-    ${a?`<label class="l">3 · Frente de serviço <span class="pill warn" style="margin-left:4px">obrigatório · item curva A</span></label>
-      <div class="bx-chips">${BX_FRENTES.map(f=>`<button class="bx-chip ${f===BX.frente?'on':''}" onclick="BX.frente=this.dataset.f;openBaixa()" data-f="${f}">${f}</button>`).join('')}</div>`
-      :`<div class="sm mut" style="margin-top:14px">${icon('info',13)} Item curva ${curvaDe(it)}: sem destino. O controle é pela contagem semanal.</div>`}
-    <div class="bx-wa">${icon('mic',16)}<span>Ou mande um áudio no WhatsApp: "usei 6 sacos de cimento na alvenaria".</span><a class="link" href="#" onclick="closeModal();go('campo');return false">abrir</a></div>
-    <div class="row" style="margin-top:18px"><span class="sp"></span><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn amb" onclick="bxGravar()">Registrar saída</button></div>`;
-  $('modal').classList.add('on');
+  abrirModal(`<h2>Registrar saída</h2><p class="mut conf-meta">3 toques: item, quantidade, frente de serviço.</p>
+    <p class="l">1 · Item <span class="mut">· os mais usados</span></p>
+    <div class="bx-chips">${usados.map(x=>`<button type="button" class="bx-chip ${x.id===it.id?'on':''}" aria-pressed="${x.id===it.id}" onclick="BX.item='${x.id}';openBaixa()">${x.nome.replace(/ 50 kg| 14×19×29| 5\/16" × 2"/,'')}<small>saldo ${fmt(x.ent-x.sai)} ${x.un}</small></button>`).join('')}</div>
+    <label class="l" for="bxQ">2 · Quantidade <span class="mut">· a última foi ${BX_ULT[it.id]||1}</span></label>
+    <div class="bx-q"><button type="button" class="btn" aria-label="Menos" onclick="bxPasso(-1)">${icon('minus',18)}</button><input class="f" id="bxQ" type="number" min="1" inputmode="numeric" value="${BX_ULT[it.id]||1}" oninput="bxCalc()"><button type="button" class="btn" aria-label="Mais" onclick="bxPasso(1)">${icon('plus',18)}</button><span class="bx-saldo" id="bxSaldo" aria-live="polite"></span></div>
+    ${a?`<p class="l">3 · Frente de serviço <span class="mut">· obrigatória para item curva A</span></p>
+      <div class="bx-chips">${BX_FRENTES.map(f=>`<button type="button" class="bx-chip ${f===BX.frente?'on':''}" aria-pressed="${f===BX.frente}" onclick="BX.frente=this.dataset.f;openBaixa()" data-f="${f}">${f}</button>`).join('')}</div>`
+      :`<p class="mut bx-c">${icon('info',14)} Item curva ${curvaDe(it)}: sem destino. O controle é pela contagem semanal.</p>`}
+    ${state.view==='campo'?'':`<p class="bx-wa">${icon('mic',16)}<span>Ou mande um áudio no WhatsApp: "usei 6 sacos de cimento na alvenaria".</span><a class="link" href="#" onclick="closeModal();go('campo');return false">abrir</a></p>`}
+    <div class="row"><span class="sp"></span><button type="button" class="btn amb" id="bxOk" onclick="bxGravar()"></button></div>`);
+  bxCalc();
+}
+function bxPasso(d){ const e=$('bxQ'); e.value=Math.max(1,(parseInt(e.value,10)||0)+d); bxCalc(); }
+function bxCalc(){
+  const it=invItem(BX.item), q=Math.max(0,parseInt($('bxQ').value,10)||0), s=it.ent-it.sai, ok=q>0&&q<=s;
+  $('bxSaldo').innerHTML = q>s ? `<span class="t-perda">saldo é ${fmt(s)} ${it.un}</span>` : `saldo ${fmt(s)} → <b>${fmt(s-q)}</b> ${it.un}`;
+  $('bxOk').textContent = q ? `Registrar saída de ${fmt(q)} ${it.un}` : 'Informe a quantidade';
+  $('bxOk').disabled = !ok;
 }
 function bxGravar(){
   const it=invItem(BX.item), q=Math.max(0,parseInt($('bxQ').value,10)||0), a=curvaDe(it)==='A';
@@ -258,62 +290,108 @@ function bxGravar(){
 
 /* ---------- estilo ---------- */
 addCSS(`
-.campo-wrap{display:grid;grid-template-columns:400px minmax(280px,440px);gap:36px;align-items:start}
-.phone{width:400px;height:min(780px,calc(100vh - 150px));min-height:560px;border-radius:44px;background:#121816;padding:12px;box-shadow:0 30px 60px rgba(26,32,30,.18)}
+.campo-sub{margin:6px 0 0;max-width:68ch;color:var(--ink2);font-size:var(--t-body)}
+.campo-wrap{display:grid;grid-template-columns:400px minmax(300px,460px);gap:var(--s6);align-items:start}
+.phone{width:400px;height:min(800px,calc(100vh - 170px));min-height:580px;border-radius:44px;background:#121816;padding:12px;box-shadow:0 30px 60px rgba(26,32,30,.18)}
 .phone-in{height:100%;border-radius:34px;overflow:hidden;display:flex;flex-direction:column;background:#ece5dd}
-.wa-top{display:flex;align-items:center;gap:10px;padding:14px 14px 10px;background:var(--pine);color:#fff}
-.wa-top small{display:block;font-size:11.5px;color:#b9c7c2;font-weight:400}
-.wa-av{width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--pine);display:grid;place-items:center;flex:none}
-.wa-ico{border:0;background:none;color:inherit;padding:6px;border-radius:50%;display:grid;place-items:center}
-.wa-body{flex:1;overflow:auto;padding:12px 10px;display:flex;flex-direction:column;gap:6px;font-size:13.5px;line-height:1.45}
-.wa-dia{align-self:center;background:#fff;border-radius:8px;padding:2px 10px;font-size:11.5px;color:var(--muted);margin-bottom:4px}
+.phone button{touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+.wa-top{display:flex;align-items:center;gap:10px;padding:12px 12px 10px 14px;background:var(--pine);color:#fff}
+.wa-id{min-width:0} .wa-id b{display:block;font-size:16px;line-height:1.25}
+.wa-top small{display:block;font-size:13px;color:#c9d5d1;font-weight:400}
+.wa-av{width:36px;height:36px;border-radius:50%;background:var(--accent);color:var(--pine);display:grid;place-items:center;flex:none}
+.wa-saida{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 14px;border:1px solid rgba(255,255,255,.55);border-radius:99px;background:none;color:#fff;font:600 14px var(--sans);white-space:nowrap;transition:transform .12s var(--ease)}
+.wa-ico{border:0;background:none;color:var(--ink2);width:44px;height:44px;border-radius:50%;display:grid;place-items:center;flex:none}
+.wa-body{flex:1;overflow:auto;overscroll-behavior:contain;padding:12px 10px;display:flex;flex-direction:column;gap:8px;font-size:16px;line-height:1.45;color:var(--ink)}
+.wa-dia{align-self:center;background:#fff;border-radius:8px;padding:2px 12px;font-size:13px;color:#4a524f;margin-bottom:4px}
 .wa-m{display:flex} .wa-m.eu{justify-content:flex-end}
-.wa-b{max-width:86%;background:#fff;border-radius:10px;padding:7px 9px 5px;box-shadow:0 1px 1px rgba(0,0,0,.08);position:relative}
+.wa-b{max-width:88%;background:#fff;border-radius:10px;padding:8px 10px 6px;position:relative}
 .wa-m.eu .wa-b{background:#e2f0d9}
-.wa-m.feito .wa-b{opacity:.75}
-.wa-h{display:flex;justify-content:flex-end;align-items:center;gap:3px;font-size:10.5px;color:var(--faint);margin-top:2px}
-.wa-h .ic{color:#4f9bd9}
-.wa-ol{margin:6px 0 0;padding-left:18px} .wa-ol li{margin:0 0 6px}
-.wa-obs{color:var(--red);font-size:12.5px}
-.wa-q{margin-top:4px;font-weight:600}
-.wa-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.wa-btn{border:1px solid var(--line);background:#fff;border-radius:99px;padding:6px 13px;font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:5px}
-.wa-btn.pri{background:var(--pine);color:#fff;border-color:var(--pine)}
-.wa-audio{display:flex;align-items:center;gap:8px;min-width:230px}
-.wa-play{width:34px;height:34px;border-radius:50%;border:0;background:var(--pine);color:#fff;display:grid;place-items:center;flex:none}
-.wa-onda{display:flex;align-items:center;gap:2px;height:30px;flex:1} .wa-onda i{width:3px;border-radius:2px;background:#a9b9b2} .wa-onda i.on{background:var(--pine)}
-.wa-dur{font-size:11.5px;color:var(--muted)}
-.wa-transc{margin-top:6px;padding:6px 8px;border-radius:7px;background:rgba(255,255,255,.65);font-size:12.5px;color:var(--ink2);font-style:italic}
-.wa-transc span{display:flex;align-items:center;gap:4px;font-style:normal;font-size:11px;color:var(--muted);font-weight:600;margin-bottom:2px}
-.wa-nf{background:#fbfbf8;border:1px solid #ddd;border-radius:6px;padding:8px 10px;font:11px/1.45 ui-monospace,Menlo,monospace;color:#333;margin-bottom:6px;transform:rotate(-1deg)}
+.wa-h{display:flex;justify-content:flex-end;align-items:center;gap:3px;font-size:13px;color:#4a524f;margin-top:2px}
+.wa-h .ic{color:#2f6f9f}
+.wa-alerta{display:flex;align-items:center;gap:8px;margin:8px 0 2px;padding:8px 10px;border-radius:8px;background:var(--amberSoft);color:var(--amberInk)}
+.wa-sec{margin:12px 0 4px;font-size:13px;font-weight:600;color:#4a524f;text-transform:uppercase;letter-spacing:.04em}
+.wa-grav{list-style:none;margin:0;padding:0;border-top:1px solid var(--line2)}
+.wa-grav li{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line2)}
+.wa-grav li > div{flex:1;min-width:0} .wa-grav b{display:block;font-weight:600} .wa-grav span{display:block;font-size:14px;color:var(--ink2)}
+.wa-grav li.fora b,.wa-grav li.fora span{text-decoration:line-through;color:#4a524f}
+.wa-x{flex:none;min-width:44px;height:44px;border:0;border-radius:50%;background:none;color:var(--ink2);display:grid;place-items:center;font:600 14px var(--sans);transition:transform .12s var(--ease)}
+.wa-grav li.fora .wa-x{border-radius:99px;color:var(--accentInk);text-decoration:underline;text-underline-offset:3px}
+.wa-saber{margin:0;color:var(--ink2)}
+.wa-ok{display:flex;gap:8px;align-items:flex-start;margin:10px 0 0} .wa-ok .ic{color:var(--greenInk);flex:none;margin-top:3px}
+.wa-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px} .wa-acts.col{flex-direction:column}
+.wa-btn{min-height:44px;border:1px solid #b8c2be;background:#fff;color:var(--ink);border-radius:99px;padding:0 18px;font:500 15px var(--sans);display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:transform .12s var(--ease)}
+.wa-btn.pri{background:var(--pine);color:#fff;border-color:var(--pine);font-weight:600}
+.wa-btn.big{min-height:48px;font-size:16px}
+.wa-btn[disabled]{opacity:.55}
+.wa-btn:active,.wa-x:active,.wa-saida:active,.wa-mic:active,.wa-ico:active,.wa-play:active{transform:scale(.97)}
+.wa-audio{display:flex;align-items:center;gap:8px;min-width:240px}
+.wa-play{width:44px;height:44px;border-radius:50%;border:0;background:var(--pine);color:#fff;display:grid;place-items:center;flex:none;transition:transform .12s var(--ease)}
+.wa-onda{display:flex;align-items:center;gap:2px;height:30px;flex:1} .wa-onda i{width:3px;border-radius:2px;background:#8fa39b} .wa-onda i.on{background:var(--pine)}
+.wa-dur{font-size:13px;color:#4a524f}
+.wa-transc{margin-top:6px;padding:6px 8px;border-radius:7px;background:rgba(255,255,255,.7);font-size:15px;color:var(--ink2);font-style:italic}
+.wa-transc span{display:flex;align-items:center;gap:4px;font-style:normal;font-size:13px;color:#4a524f;font-weight:600;margin-bottom:2px}
+.wa-nf{background:#f6f5ef;border-radius:3px;padding:8px 10px;font:12px/1.45 ui-monospace,Menlo,monospace;color:#333;margin-bottom:6px;transform:rotate(-1deg)}
 .wa-nf .h{display:flex;justify-content:space-between;border-bottom:1px dashed #bbb;padding-bottom:3px;margin-bottom:3px}
 .wa-nf .ln{display:flex;justify-content:space-between;gap:10px} .wa-nf .tot{border-top:1px dashed #bbb;margin-top:3px;padding-top:3px;font-weight:700}
+.wa-nf .mut{color:#555}
 .wa-nf .bc{height:16px;margin-top:6px;background:repeating-linear-gradient(90deg,#333 0 2px,transparent 2px 4px,#333 4px 5px,transparent 5px 8px)}
 .wa-wall{width:240px;height:150px;border-radius:7px;position:relative;overflow:hidden;background:linear-gradient(#b9c6cf 0 38%,transparent 38%)}
 .wa-wall i{position:absolute;left:0;right:0;bottom:0;height:62%;background:
   repeating-linear-gradient(0deg,#d8d2c4 0 3px,transparent 3px 22px),
   repeating-linear-gradient(90deg,#d8d2c4 0 3px,transparent 3px 44px),#b5643f}
-.wa-wall span{position:absolute;left:8px;bottom:6px;color:#fff;font-size:11px;background:rgba(0,0,0,.4);padding:1px 6px;border-radius:5px}
-.wa-fix{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px} .wa-fix label{font-size:11.5px;color:var(--muted)}
-.wa-fix input{width:100%;margin-top:2px;padding:6px;border:1px solid var(--line);border-radius:7px;font:inherit;font-size:14px}
+.wa-wall span{position:absolute;left:8px;bottom:6px;color:#fff;font-size:13px;background:rgba(0,0,0,.6);padding:1px 6px;border-radius:5px}
+.wa-fix{display:grid;gap:10px;margin-top:10px}
+.wa-fix-l label{display:block;font-size:14px;color:var(--ink2);margin-bottom:4px}
+.wa-step{display:flex;align-items:center;gap:6px}
+.wa-step .wa-btn{width:44px;padding:0;flex:none}
+.wa-step input{flex:1;min-width:0;height:44px;padding:0 10px;border:1px solid #b8c2be;border-radius:10px;font:600 18px var(--sans);text-align:center;color:var(--ink);background:#fff}
 .wa-comp{display:flex;align-items:center;gap:6px;padding:8px;background:#f0f0f0}
-.wa-inp{flex:1;background:#fff;border-radius:99px;padding:8px 14px;color:var(--faint)}
-.wa-mic{width:40px;height:40px;border-radius:50%;border:0;background:var(--pine);color:#fff;display:grid;place-items:center}
-.campo-side{display:flex;flex-direction:column;gap:16px}
-.campo-side .card{margin:0} .campo-side .callout{margin:0}
-.campo-li{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line2)} .campo-li:first-of-type{border-top:0}
-.campo-li > .ic{margin-top:3px;color:var(--muted)}
-.conf-src{display:grid;grid-template-columns:230px 1fr;gap:18px;margin-top:18px;align-items:start}
+.wa-inp{flex:1;min-width:0;height:44px;border:0;background:#fff;border-radius:99px;padding:0 16px;font:16px var(--sans);color:var(--ink)}
+.wa-inp::placeholder{color:#575f5c}
+.wa-mic{width:48px;height:48px;border-radius:50%;border:0;background:var(--pine);color:#fff;display:grid;place-items:center;flex:none;transition:transform .12s var(--ease)}
+.campo-side{display:flex;flex-direction:column;gap:var(--s4)}
+.campo-side .card{margin:0}
+.ef h2{margin:0;font-size:var(--t-sec)}
+.ef > p{margin:4px 0 var(--s3);display:flex;align-items:center;gap:6px}
+.ef ul{list-style:none;margin:0;padding:0}
+.ef li{display:flex;gap:var(--s3);align-items:flex-start;padding:10px 0;border-top:1px solid var(--line2)}
+.ef li > .ic{margin-top:3px;color:var(--muted);flex:none} .ef li > div{flex:1;min-width:0}
+.ef-v{display:flex;align-items:center;flex-wrap:wrap;gap:4px 6px;font-size:var(--t-meta);color:var(--muted)}
+.ef-v .ic{color:var(--muted)} .ef-se{color:var(--ink);font-weight:600} .ef-ok{color:var(--greenInk);font-weight:600}
+/* modais do campo: conferência e baixa */
+.conf-meta{font-size:var(--t-meta);margin:4px 0 var(--s4)}
+.conf-nums{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s4);padding:var(--s3) 0;border-top:1px solid var(--line2);border-bottom:1px solid var(--line2)}
+.conf-nums > div > span,.conf-nums label{display:block;font-size:var(--t-meta);color:var(--muted);margin-bottom:4px}
+.conf-nums b{font:600 var(--t-bloco)/1.2 var(--serif)}
+.conf-in{display:flex;align-items:center;gap:6px} .conf-in span{color:var(--muted)} .conf-in input.f::-webkit-inner-spin-button,.wa-step input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.conf-in input.f{width:100px;height:44px;font:600 18px var(--sans);text-align:right}
+.t-pede{color:var(--amberInk)} .t-ok{color:var(--greenInk)} .t-perda{color:var(--redInk)}
+.conf-esc{border:0;padding:0;margin:var(--s3) 0 0;display:grid;gap:var(--s2)} .conf-esc legend{padding:0;color:var(--ink);font-weight:600}
+.conf-src{display:grid;grid-template-columns:230px 1fr;gap:var(--s4);margin-top:var(--s4);align-items:start}
+.conf-li{margin:0 0 var(--s2);display:flex;align-items:center;gap:6px;font-size:var(--t-meta)}
 .conf-nf .wa-nf{transform:none;margin:0}
-input.f.conf-q{width:90px;text-align:right;padding:5px 8px}
-.bx-chips{display:flex;flex-wrap:wrap;gap:8px}
-.bx-chip{border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px 12px;text-align:left;font-size:13.5px;font-weight:500}
-.bx-chip small{display:block;font-weight:400;color:var(--muted);font-size:11.5px}
+.bx-chips{display:flex;flex-wrap:wrap;gap:var(--s2)}
+.bx-chip{min-height:44px;border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px 12px;text-align:left;font:500 var(--t-body) var(--sans);color:var(--ink);transition:transform .12s var(--ease)}
+.bx-chip small{display:block;font-weight:400;color:var(--muted);font-size:var(--t-meta)}
 .bx-chip.on{border-color:var(--accent);background:var(--accentSoft);color:var(--accentInk)}
-.bx-wa{display:flex;align-items:center;gap:8px;margin-top:20px;padding:10px 12px;border-radius:10px;background:var(--pineSoft);font-size:13px}
+.bx-chip:active{transform:scale(.97)}
+.bx-q{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap}
+.bx-q .btn{width:44px;height:44px;padding:0}
+.bx-q input.f{width:110px;height:44px;font:600 18px var(--sans);text-align:right}
+.bx-saldo{color:var(--muted)} .bx-saldo b{color:var(--ink)}
+.bx-c{display:flex;align-items:center;gap:6px;margin-top:var(--s4)}
+.bx-wa{display:flex;align-items:center;gap:8px;margin:var(--s5) 0 0;padding:var(--s3) 0 0;border-top:1px solid var(--line2);font-size:var(--t-meta);color:var(--ink2)}
 .bx-wa .link{margin-left:auto}
+p.l{display:block;font-size:var(--t-meta);color:var(--muted);margin:14px 0 5px;font-weight:500}
+@media (hover:hover){
+  .wa-btn:hover{background:#f3f5f4} .wa-btn.pri:hover{background:#26382f}
+  .wa-saida:hover{background:rgba(255,255,255,.1)} .wa-x:hover{background:var(--sunk)} .bx-chip:hover{border-color:#b9c2bf}
+}
+@media (prefers-reduced-motion:reduce){ .wa-btn:active,.wa-x:active,.wa-saida:active,.wa-mic:active,.wa-ico:active,.wa-play:active,.bx-chip:active{transform:none} }
 /* celular: só a rota #campo passa pelo aviso de "abra num computador", em tela cheia, sem sidebar */
 @media (max-width:1099px){
+  html:has(body.campo-mode){-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%;overscroll-behavior:none}
+  body.campo-mode{overscroll-behavior:none}
   body.campo-mode #gate{display:none!important}
   body.campo-mode .app{display:block!important;height:100vh;height:100dvh}
   body.campo-mode .side,body.campo-mode .campo-top,body.campo-mode .campo-side{display:none}
@@ -322,12 +400,21 @@ input.f.conf-q{width:90px;text-align:right;padding:5px 8px}
   body.campo-mode .campo-wrap{display:block;height:100%}
   body.campo-mode .phone{width:100%;height:100%;min-height:0;border-radius:0;padding:0;box-shadow:none}
   body.campo-mode .phone-in{border-radius:0}
+  body.campo-mode .wa-top{padding-top:max(10px,env(safe-area-inset-top));padding-left:max(14px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right))}
+  body.campo-mode .wa-comp{padding-bottom:max(8px,env(safe-area-inset-bottom));padding-left:max(8px,env(safe-area-inset-left));padding-right:max(8px,env(safe-area-inset-right))}
+  body.campo-mode .wa-b{max-width:92%}
   body.campo-mode .modal.on{display:grid!important} body.campo-mode .drawer.on{display:flex!important}
   body.campo-mode .toast[style*="block"]{display:block!important;width:max-content;max-width:92vw}
-  body.campo-mode .modal .box{padding:22px 18px;max-height:94vh}
+  body.campo-mode .toast{bottom:calc(72px + env(safe-area-inset-bottom,0px));font-size:16px}
+  body.campo-mode .toast .t-undo{min-height:44px;padding:0 10px}
+  body.campo-mode .modal .box{padding:22px 18px 0;font-size:16px}
+  body.campo-mode .modal .box .btn{min-height:44px}
+  body.campo-mode .modal .dlg-x{width:44px;height:44px;top:10px;right:10px}
+  body.campo-mode .modal .box > .row:last-child .btn.amb{flex:1 1 100%;min-height:48px;font-size:16px}
+  body.campo-mode .modal input.f,body.campo-mode .modal select.f,body.campo-mode .modal textarea.f{font-size:16px}
   body.campo-mode .conf-src{grid-template-columns:1fr}
-  body.campo-mode .conf-tab th,body.campo-mode .conf-tab td{padding:8px 6px;font-size:12.5px}
-  body.campo-mode input.f.conf-q{width:58px}
-  body.campo-mode .conf-acts .btn{flex:1 1 100%;justify-content:center}
+  body.campo-mode .conf-nums{gap:var(--s3)}
+  body.campo-mode .conf-nums b{font-size:20px}
+  body.campo-mode .conf-in input.f{width:76px}
 }
 `);

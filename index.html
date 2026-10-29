@@ -7,23 +7,25 @@
 <title>Canteiro · agente de obras (protótipo)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body class="notes">
-<div id="gate"><div class="box"><div class="logo"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/></svg></div>
-  <h2>Abra num computador</h2>
-  <p>Este protótipo foi desenhado para telas de computador e não funciona em celular ou tablet.</p>
-  <p>Se você já está num computador, maximize a janela do navegador.</p>
-  <p class="meta">Sua tela: <span id="gw"></span> px de largura · mínimo: 1100 px</p>
+<div id="gate"><div class="box">
+  <div class="brand"><div class="logo"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="13" width="8" height="7" rx="1.2"/><rect x="13" y="13" width="8" height="7" rx="1.2"/><rect x="8" y="4" width="8" height="7" rx="1.2"/></svg></div>Canteiro</div>
+  <h2>Abra no computador</h2>
+  <p>O painel do gerente é feito para telas a partir de 1100 px. No celular, use a tela do canteiro: o WhatsApp do mestre, que funciona aqui.</p>
+  <a class="btn amb" href="#campo">Abrir a tela do canteiro</a>
+  <p class="meta">Sua tela: <span id="gw"></span> px de largura · o painel pede 1100 px</p>
 </div></div>
 <div class="app">
   <aside class="side" id="side"></aside>
   <main class="main" id="main"></main>
+  <aside class="painel" id="painel" aria-label="Agente da obra"></aside>
 </div>
-<div class="drawer" id="drawer" onclick="if(event.target===this)closeDrawer()"><div class="pane" id="drawerPane"></div></div>
-<div class="modal" id="modal" onclick="if(event.target===this)closeModal()"><div class="box" id="modalBox"></div></div>
-<div class="toast" id="toast"></div>
+<div class="drawer" id="drawer" onclick="if(event.target===this)closeDrawer()"><div class="pane" id="drawerPane" role="dialog" aria-modal="true" tabindex="-1"></div></div>
+<div class="modal" id="modal" onclick="if(event.target===this)foraDoModal()"><div class="box" id="modalBox" role="dialog" aria-modal="true" tabindex="-1"></div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="js/icons.js"></script>
 <script src="js/data.js"></script>
