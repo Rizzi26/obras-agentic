@@ -1,0 +1,33 @@
+<!doctype html><meta charset="utf-8"><body><pre id="out">rodando</pre><script>
+/* Digita no campo como o usuário e confere o que o agente devolve. */
+const log=[], errs=[]; const f=document.createElement('iframe'); f.style.width='1440px'; f.style.height='900px'; document.body.appendChild(f);
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+f.onload=async()=>{ const w=f.contentWindow, d=()=>f.contentDocument; w.onerror=m=>errs.push(String(m));
+ const E=s=>{try{return w.eval(s)}catch(e){errs.push(s+' → '+e.message)}};
+ const ultimo=()=>{ const m=[...d().querySelectorAll('.msg')]; return m.length? m[m.length-1].innerText : ''; };
+ const digitar=async(txt)=>{ const ta=d().querySelector('textarea'); if(!ta){errs.push('sem campo'); return '';}
+   ta.value=txt; ta.dispatchEvent(new w.Event('input',{bubbles:true})); ta.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+   const marca=txt.replace(/^@\S+\s+\S+\s*/,'').slice(0,18);
+   // espera a resposta: tudo o que vem depois da mensagem digitada
+   for(let i=0;i<80;i++){ const ms=[...d().querySelectorAll('.msg')]; const j=ms.map(m=>m.innerText).findLastIndex(x=>x.includes(marca));
+     if(j>=0 && ms.length>j+1 && !d().querySelector('.ca-pensando')){ await sleep(200); return [...d().querySelectorAll('.msg')].slice(j+1).map(m=>m.innerText).join('\n'); }
+     await sleep(100); }
+   errs.push('sem resposta para: '+txt); return ''; };
+ const tem=(nome,txt,re)=>{ const ok=re.test(txt); log.push((ok?'ok   ':'FALHA ')+nome); if(!ok) errs.push(nome+': '+txt.slice(0,160).replace(/\s+/g,' ')); };
+ await sleep(400);
+ tem('abre na Geral com o briefing', d().querySelector('#main').innerText, /decis|pedem/i);
+ tem('relatório da fase', await digitar('vamos começar pela Vila Nova, quero um relatório da fase da obra'), /Relatório da fase/);
+ tem('oferece a sessão da obra', d().querySelector('#main').innerText, /sessão só da|Continuar/i);
+ tem('blocos: conta e quebra', await digitar('por que só tem 2.760 blocos?'), /2\.760[\s\S]*15%/);
+ const ab=[...d().querySelectorAll('.msg button, .msg a')].reverse().find(b=>/almoxarifado/i.test(b.textContent)); if(ab){ ab.click(); await sleep(300); }
+ tem('abre o almoxarifado ao lado', String(location.hash)+' '+(E('JSON.stringify(state.visao||{})')||''), /inventario/);
+ tem('@Loja Centro sobras', await digitar('@Loja Centro o que sobra?'), /porcelanato|cimento/i);
+ tem('pedir aço vira proposta', await digitar('pede 600 kg de aço'), /Aprovar|Pedir/);
+ tem('quem está na obra', await digitar('quem está na obra hoje?'), /7|Rafael/);
+ tem('não reconhecido é honesto', await digitar('qual a cor do capacete do papa'), /não sei|chutar/i);
+ E("abrirVisao('kanban','vila-nova')"); await sleep(300); E('perguntarSobre()'); await sleep(200);
+ tem('perguntar sobre a visão de Pedidos', await digitar('explica isto'), /PED-|pedido|NF/i);
+ const sem=/NaN|undefined|\[object/.exec(d().querySelector('#main').innerText); if(sem) errs.push('LIXO na conversa: '+sem[0]);
+ document.getElementById('out').textContent='FIM\n'+log.join('\n')+'\nERROS:\n'+(errs.join('\n')||'nenhum'); };
+f.src='/index.html?cv='+Math.random()+'#c/geral';
+</script>

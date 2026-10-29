@@ -1,17 +1,18 @@
-<!doctype html><body><pre id="out">rodando</pre><script>
+<!doctype html><meta charset="utf-8"><body><pre id="out">rodando</pre><script>
 const log=[], errs=[]; const f=document.createElement('iframe'); f.style.width='1440px'; f.style.height='900px'; document.body.appendChild(f);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 f.onload=async()=>{ const w=f.contentWindow, d=()=>f.contentDocument; w.onerror=m=>errs.push(String(m));
  const E=s=>{try{return w.eval(s)}catch(e){errs.push(s+' → '+e.message)}};
  const go=async h=>{E(`location.hash='#${h}'`); await sleep(120);};
- const clicar=async(sel,re,onde='#main')=>{ const b=[...d().querySelectorAll(onde+' '+sel)].find(x=>re.test(x.textContent.trim())); if(!b){errs.push('sem botão '+re+' em '+onde); return false;} b.click(); await sleep(150); return true; };
+ // a tela pedida pela rota antiga abre como visão (#visao); o resto (conversa, modal) fica onde estava
+ const clicar=async(sel,re,onde='#visao:not([hidden]), #main')=>{ const b=[...d().querySelectorAll(onde.split(', ').map(o=>o+' '+sel).join(', '))].find(x=>re.test(x.textContent.trim())); if(!b){errs.push('sem botão '+re+' em '+onde); return false;} b.click(); await sleep(150); return true; };
  const sal=id=>E(`(()=>{const i=dados('vila-nova').inv.find(x=>x.id==='${id}');return i.ent-i.sai})()`);
  // 1. Pedidos: aprovar a telha pelo botão
  await go('obra/vila-nova/kanban'); const c0=E("LOTES.find(l=>l.id==='PED-0163').col");
  await clicar('button',/^Aprovar R\$ 9\.165/); log.push('PED-0163 col '+c0+' → '+E("LOTES.find(l=>l.id==='PED-0163').col"));
  // 2. WhatsApp: confirmar o áudio pelo botão
  await go('campo'); const b0=sal('bloco'); await clicar('button',/^Confirmar e gravar/); log.push('bloco '+b0+' → '+sal('bloco'));
- await go('obra/vila-nova/diario'); log.push('RDO aguardando? '+d().querySelector('#main').innerText.includes('aguardando confirmação'));
+ await go('obra/vila-nova/diario'); log.push('RDO aguardando? '+d().querySelector('#visao').innerText.includes('aguardando confirmação'));
  // 3. NF da areia pelo modal
  const a0=sal('areia'); E("openConferencia('PED-0157')"); await sleep(200); await clicar('button',/^Abater R\$ 472/,'#modal'); log.push('areia '+a0+' → '+sal('areia')+' · conf '+E("LOTES.find(l=>l.id==='PED-0157').conf"));
  // 4. Início: aprovar a 1ª decisão
@@ -21,7 +22,7 @@ f.onload=async()=>{ const w=f.contentWindow, d=()=>f.contentDocument; w.onerror=
  // 6. Aprovações em lote
  await go('aprovacoes'); E('apTodas(true)'); await sleep(100); const p0=E("PROPOSTAS.filter(p=>p.st==='pendente').length"); E('aprovarSelecionadas()'); await sleep(150); log.push('pendentes '+p0+' → '+E("PROPOSTAS.filter(p=>p.st==='pendente').length"));
  // 7. Todas as rotas depois de tudo
- for(const r of ['home','hub','estoque','aprovacoes','campo','fluxos','obra/vila-nova/hoje','obra/vila-nova/componentes','obra/vila-nova/kanban','obra/vila-nova/inventario','obra/vila-nova/entreobras','obra/vila-nova/overview','obra/vila-nova/medicoes','obra/vila-nova/prazos','obra/vila-nova/diario','obra/vila-nova/equipe','obra/loja-centro/hoje','obra/loja-centro/kanban','obra/galpao/hoje']){ await go(r); const t=d().querySelector('#main').innerText; if(/NaN|undefined|\[object/.test(t)) errs.push('LIXO '+r+': '+t.match(/.{0,30}(NaN|undefined|\[object).{0,15}/)[0]); if(t.length<50) errs.push('VAZIA '+r); }
+ for(const r of ['home','hub','estoque','aprovacoes','campo','fluxos','obra/vila-nova/hoje','obra/vila-nova/componentes','obra/vila-nova/kanban','obra/vila-nova/inventario','obra/vila-nova/entreobras','obra/vila-nova/overview','obra/vila-nova/medicoes','obra/vila-nova/prazos','obra/vila-nova/diario','obra/vila-nova/equipe','obra/loja-centro/hoje','obra/loja-centro/kanban','obra/galpao/hoje']){ await go(r); const t=d().querySelector('#main').innerText+d().querySelector('#visao').innerText; if(/NaN|undefined|\[object/.test(t)) errs.push('LIXO '+r+': '+t.match(/.{0,30}(NaN|undefined|\[object).{0,15}/)[0]); if(t.length<50) errs.push('VAZIA '+r); }
  document.getElementById('out').textContent='FIM\n'+log.join('\n')+'\nERROS:\n'+(errs.join('\n')||'nenhum'); };
 f.src='/index.html?e2e='+Math.random()+'#home';
 </script>

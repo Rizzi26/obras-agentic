@@ -41,7 +41,6 @@ b,strong{font-weight:600}
 h1,h2,h3{font-family:var(--serif);font-weight:600;letter-spacing:-.02em;text-wrap:balance}
 p{text-wrap:pretty}
 .app{display:grid;grid-template-columns:248px minmax(0,1fr);height:100vh}
-.app.com-painel{grid-template-columns:248px minmax(0,1fr) 400px}
 
 /* ---------------- sidebar ---------------- */
 .side{background:var(--side);color:var(--sideInk);display:flex;flex-direction:column;padding:16px 12px 12px;gap:1px;overflow:auto}
@@ -304,30 +303,7 @@ body .g-day.on{box-shadow:none;font-weight:500}
 .attach{display:inline-flex;gap:6px;align-items:center;background:var(--sunk);border:1px solid var(--line2);padding:2px 10px;border-radius:7px;font-size:var(--t-meta);margin:0 4px 6px 0;color:var(--ink2)}
 .attach .ic{color:var(--muted);vertical-align:0}
 .msg.me .attach{background:#2e423d;border-color:#3d524c;color:#dfe7e4}
-.sessions{border-right:1px solid var(--line);padding:18px 12px;overflow:auto;background:var(--sunk)}
-.sess{padding:8px 10px;border-radius:7px;margin-bottom:2px} .sess.on{background:#fff;box-shadow:var(--shadow)}
-.sess b{display:block;font-size:var(--t-body);font-weight:500} .sess span{font-size:var(--t-meta);color:var(--muted)}
-.chatwrap{display:grid;grid-template-columns:248px minmax(0,1fr);flex:1;min-height:0}
 
-/* painel do agente na obra (recolhível, à direita) */
-.painel{display:none;flex-direction:column;min-height:0;min-width:0;height:100vh;background:var(--sunk);border-left:1px solid var(--line)}
-.com-painel .painel{display:flex}
-.painel-top{display:flex;align-items:center;gap:var(--s2);padding:14px 16px 12px;background:#fff;border-bottom:1px solid var(--line)}
-.painel-top h2{margin:0;font-size:var(--t-sec);line-height:1.3}
-.painel-top .sess-sel{margin-top:2px;font-size:var(--t-meta);color:var(--muted)}
-.painel-top select{font:inherit;font-size:var(--t-meta);color:var(--ink2);border:1px solid var(--line);border-radius:6px;background:#fff;padding:2px 6px;max-width:220px}
-.painel .msgs{padding:16px;gap:16px}
-.painel .msg.ai{gap:8px}
-.painel .aiav{width:24px;height:24px} .painel .aiav svg{width:14px;height:14px}
-.painel .msg.ai .bub{padding:12px 14px;overflow-x:auto}
-.painel .msg.me{max-width:88%}
-.painel .composer{width:auto;margin:8px 16px 16px}
-.painel .composer textarea{font-size:var(--t-body);min-height:40px}
-/* em telas < 1440 px o painel flutua sobre o conteúdo para não espremer as tabelas */
-@media (max-width:1439px){
-  .app.com-painel{grid-template-columns:248px minmax(0,1fr)}
-  .com-painel .painel{position:fixed;top:0;right:0;bottom:0;width:400px;z-index:15;box-shadow:-16px 0 40px rgba(23,32,29,.12);animation:drawerIn .22s var(--ease)}
-}
 
 /* ---------------- modal e drawer ---------------- */
 /* modal grava: role=dialog, X, Esc, foco preso, rodapé de ação fixo; clicar fora não fecha se houver formulário */
@@ -375,6 +351,147 @@ body .g-day.on{box-shadow:none;font-weight:500}
 .spin{animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* ---------------- casca: agente no centro ----------------
+   3 áreas: conversas e visões (esquerda) · a conversa (centro) · a visão aberta (direita, ou tela cheia).
+   As colunas são fixas por item para a tela cheia poder esconder a conversa sem o grid escorregar. */
+.app{overflow:hidden}   /* a visão entra deslizando 16 px: sem barra horizontal durante a animação */
+@media (min-width:1100px){ html,body{overflow:hidden} }   /* só os painéis rolam (conversa, visão, página); o destaque nunca desce a página */
+.app>.side{grid-column:1;grid-row:1} .app>.main{grid-column:2;grid-row:1} .app>.visao{grid-column:3;grid-row:1}
+.app.com-visao{grid-template-columns:248px minmax(0,1fr) clamp(560px,44vw,720px)}
+.app.com-visao.vs-cheia{grid-template-columns:248px 0 minmax(0,1fr)}
+.app.vs-cheia>.main{display:none}
+
+/* sidebar: conversas + visões */
+.side-nova{display:flex;align-items:center;gap:8px;margin:0 0 4px;padding:7px 10px;border:1px solid #3d524c;border-radius:8px;background:none;color:#fff;font-size:var(--t-body);font-weight:500;transition:background-color .12s var(--ease),transform .12s var(--ease)}
+.side-nova .ic{color:var(--accent)}
+.side-nova:active{transform:scale(.97)}
+.side-bloco{display:flex;flex-direction:column;gap:1px}
+.side .grp{display:flex;align-items:center;gap:8px;padding:10px 8px 3px;font-size:var(--t-meta);color:var(--sideMuted);font-weight:500;min-width:0}
+.side .grp .dot{width:8px;height:8px;border-radius:50%;flex:none;margin:0 4px}
+.side .grp small{margin-left:auto;font-size:var(--t-meta);flex:none}
+.side .grp .count{margin-left:auto;background:var(--accent);color:var(--pine);font-size:12px;font-weight:600;min-width:20px;text-align:center;padding:0 6px;border-radius:99px;line-height:20px;flex:none}
+.sess-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nav.sess{padding-left:28px;min-height:30px;font-size:var(--t-meta)}
+.nav.sess small{flex:none;padding-left:8px}
+.nav.sess.on{font-weight:500}
+.sess-nova{border:0;background:none;text-align:left;color:var(--sideMuted);width:100%}
+.sess-nova .ic{margin-left:-20px}
+.nav.vs{min-height:30px}
+.nav.vs.off{color:var(--sideMuted)}
+.vs-sel{position:relative;margin:8px 0 2px}
+.vs-sel select{appearance:none;width:100%;font:500 var(--t-meta) var(--sans);color:var(--sideInk);background:var(--sideHover);border:1px solid #3d524c;border-radius:7px;padding:6px 28px 6px 10px;cursor:pointer}
+.vs-sel .ic{position:absolute;right:9px;top:50%;margin-top:-7px;color:var(--sideMuted);pointer-events:none}
+.side .side-bloco + .side-bloco .sec{padding-top:16px}
+
+/* a conversa */
+.main.ca{overflow:hidden;background:var(--bg)}
+.ca-top{flex:none;display:flex;align-items:center;gap:var(--s3);padding:10px 20px 10px 24px;min-height:58px;background:#fff;border-bottom:1px solid var(--line);position:relative;z-index:3}
+.ca-id{display:flex;align-items:center;gap:var(--s3);min-width:0;position:relative}
+.ca-top h1{font-size:var(--t-sec);line-height:1.3;margin:0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ca-side{display:none}
+.ca-escopo{flex:none;display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--sunk);border-radius:99px;padding:4px 10px 4px 12px;font-size:var(--t-meta);font-weight:500;color:var(--ink);transition:border-color .12s var(--ease),transform .12s var(--ease)}
+.ca-escopo .dot,.ca-menu-pop .dot{width:8px;height:8px;border-radius:50%;flex:none}
+.ca-escopo>.ic:last-child{color:var(--muted);margin-right:-2px}
+.ca-escopo[aria-expanded=true]{border-color:var(--accent)}
+.ca-escopo:active{transform:scale(.97)}
+.ca-menu-pop{position:absolute;top:calc(100% + 6px);left:0;min-width:280px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 32px rgba(23,32,29,.14);padding:6px;z-index:10;transform-origin:top left;animation:popIn .14s var(--ease)}
+.ca-menu-pop button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;text-align:left;padding:8px 10px;border-radius:7px;font-size:var(--t-body)}
+.ca-menu-pop button small{margin-left:auto;color:var(--muted);font-size:var(--t-meta)}
+.ca-menu-pop button .ic:last-child{color:var(--accentInk)}
+.ca-menu-pop button:focus-visible{outline-offset:-2px}
+.ca-menu-pop button[aria-checked=true]{font-weight:500}
+.ca-msgs{scroll-padding:16px}
+.ca .msg.ai .bub{overflow-x:auto}
+.ca-cartao{margin-top:12px}
+.ca-cartao .ld-lista{box-shadow:none}
+.ca-pe{flex:none;padding:6px 0 0;position:relative}
+.ca-pe .chips{margin-bottom:6px}
+.ca-comp{position:relative;margin-top:0;padding-top:8px}
+.ca-comp textarea{min-height:24px;max-height:180px;overflow-y:auto}
+.ca-comp .row{gap:var(--s2)}
+.ca-dica{font-size:var(--t-meta);color:var(--muted);display:inline-flex;align-items:center;gap:5px}
+.ca-dica kbd{font:500 12px var(--sans);color:var(--ink2);background:var(--sunk);border:1px solid var(--line);border-radius:5px;padding:0 5px;line-height:18px}
+.ca-dica kbd + kbd{margin-left:6px}
+.ca-ctx{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 6px}
+.ca-ctx[hidden]{display:none}
+.ca-tag{display:inline-flex;align-items:center;gap:6px;font-size:var(--t-meta);color:var(--accentInk);background:var(--accentSoft);border-radius:7px;padding:2px 4px 2px 8px;font-weight:500}
+.ca-tag:not(:has(button)){padding-right:8px}
+.ca-tag button{border:0;background:none;color:var(--accentInk);padding:3px;border-radius:5px;display:inline-grid;place-items:center}
+.ca-ac{position:absolute;left:8px;right:8px;bottom:calc(100% + 6px);background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 32px rgba(23,32,29,.14);padding:6px;max-height:320px;overflow:auto;z-index:6;transform-origin:bottom left;animation:popIn .14s var(--ease)}
+.ca-ac .cab{font-size:12px;color:var(--muted);padding:4px 10px 6px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.ca-ac [role=option]{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:7px;cursor:pointer}
+.ca-ac [role=option] .ic{color:var(--muted)}
+.ca-ac [role=option] .dot{width:8px;height:8px;border-radius:50%;flex:none;margin:0 3px}
+.ca-ac [aria-selected=true]{background:var(--sunk)}
+.ca-ac [aria-selected=true] .ic{color:var(--accentInk)}
+.ca-ac .h{margin-left:auto;color:var(--muted);font-size:var(--t-meta)}
+.mencao{font-weight:600;color:var(--accentHi)}
+.ca-pensando .bub{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:var(--t-meta)}
+.ca-vazio{max-width:520px;margin:auto;text-align:center;color:var(--ink2);padding:24px 0}
+.ca-vazio .aiav{margin:0 auto 12px;width:36px;height:36px;border-radius:9px}
+.ca-vazio h2{font-size:var(--t-bloco);margin:0 0 8px;color:var(--ink)}
+.ca-vazio p{margin:0;line-height:1.6}
+.ca-vazio b{color:var(--ink);background:var(--sunk);border:1px solid var(--line);border-radius:5px;padding:0 5px}
+@keyframes popIn{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
+
+/* a visão aberta */
+.visao{display:flex;flex-direction:column;min-width:0;min-height:0;height:100vh;background:var(--bg);border-left:1px solid var(--line)}
+.visao[hidden]{display:none}
+.visao.entra{animation:vsIn .24s var(--ease)}
+@keyframes vsIn{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
+.vs-top{flex:none;display:flex;align-items:center;gap:var(--s2);padding:10px 12px 10px 24px;min-height:58px;background:#fff;border-bottom:1px solid var(--line)}
+.vs-id{min-width:0}
+.vs-obra{display:flex;align-items:center;gap:6px;font-size:var(--t-meta);color:var(--muted);white-space:nowrap;min-width:0;overflow:hidden}
+.vs-obra>span:not(.dot){overflow:hidden;text-overflow:ellipsis}
+.vs-obra .dot{width:8px;height:8px;border-radius:50%;flex:none}
+.vs-atraso{color:var(--redInk);font-weight:500}
+.vs-top h2{margin:0;font-size:var(--t-sec);line-height:1.3;display:flex;align-items:center;gap:8px}
+.vs-top h2 .ic{color:var(--accentInk)}
+.vs-volta{margin-right:var(--s2)}
+.vs-filtro{flex:none;display:flex;align-items:center;gap:8px;padding:8px 24px;background:var(--accentSoft);color:var(--accentInk);font-size:var(--t-meta)}
+.vs-filtro .link{margin-left:auto}
+.vs-corpo{flex:1;overflow:auto;min-height:0;display:flex;flex-direction:column;container:visao/inline-size}
+.vs-corpo>.top{padding:12px 24px;min-height:0}
+.vs-corpo>.top h1{display:none}
+.vs-corpo>.top:not(:has(.crumb,.btn)){display:none}
+.visao .page{padding:20px 24px 40px}
+.vs-cheia .visao .page{padding:24px 32px 48px}
+.vs-cheia .vs-corpo>.top{padding:12px 32px}
+.vs-realce{background-color:var(--accentSoft)!important;box-shadow:0 0 0 2px var(--accent);border-radius:6px}
+tr.vs-realce{box-shadow:none} tr.vs-realce>td{background-color:var(--accentSoft)!important}
+/* o conteúdo das telas foi feito para a largura da página; no painel (560–720 px) as grades descem de coluna */
+@container visao (max-width:899px){ .g3,.g4{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@container visao (max-width:620px){ .g2,.g3{grid-template-columns:minmax(0,1fr)} }
+/* painel estreito: a linha de decisão empilha (prazo · texto · valor + ações), o ciclo perde as setas e o quadro
+   de pedidos rola de lado em vez de espremer 5 colunas */
+@container visao (max-width:760px){
+  .ld{grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:12px 16px}
+  .ld-prazo,.ld-txt{grid-column:1/-1}
+  .ld-valor{grid-column:1;text-align:left}
+  .ld-acts{grid-column:2;flex-wrap:wrap}
+  .ld-valor:empty{display:none} .ld-valor:empty + .ld-acts{grid-column:1/-1;justify-content:flex-start}
+  .ciclo-seta{display:none}
+  .ciclo-et{flex-direction:column;align-items:flex-start;gap:4px;padding:6px 8px}
+  .ciclo-l small{white-space:normal}
+  .kb5{grid-template-columns:none!important;grid-auto-flow:column;grid-auto-columns:minmax(208px,1fr);overflow-x:auto}   /* vence o style inline das colunas */
+}
+
+@media (hover:hover){
+  .side-nova:hover{background:var(--sideHover)}
+  .ca-escopo:hover{border-color:#b9c2bf}
+  .ca-menu-pop button:hover{background:var(--sunk)}
+  .ca-tag button:hover{background:rgba(138,90,18,.12)}
+}
+/* 1100–1279 px: com a visão aberta a lateral recolhe (abre por cima pelo botão do topo da conversa) */
+@media (max-width:1279px){
+  .app.com-visao{grid-template-columns:0 minmax(0,1fr) 560px}
+  .app.com-visao.vs-cheia{grid-template-columns:0 0 minmax(0,1fr)}
+  .app.com-visao>.side{display:none}
+  .app.com-visao .ca-side{display:inline-grid}
+  .app.com-visao.side-aberta>.side{display:flex;position:fixed;left:0;top:0;bottom:0;width:264px;z-index:20;box-shadow:16px 0 40px rgba(23,32,29,.18);animation:sideIn .2s var(--ease)}
+}
+@keyframes sideIn{from{transform:translateX(-24px);opacity:0}to{transform:none;opacity:1}}
+
 /* ---------------- tela pequena ---------------- */
 /* Abaixo de 1100 px o painel do gerente não cabe; o aviso oferece a saída: a tela do canteiro (#campo). */
 #gate{display:none}
@@ -398,7 +515,7 @@ body .g-day.on{box-shadow:none;font-weight:500}
 @media (prefers-reduced-motion:reduce){
   .spin{animation:none}
   *{transition-property:opacity!important}
-  .modal.on .box,.drawer.on .pane,.com-painel .painel,body.campo-mode .modal.on .box{animation:fadeIn .18s linear!important}
+  .modal.on .box,.drawer.on .pane,.visao.entra,.app.side-aberta>.side,.ca-ac,.ca-menu-pop,body.campo-mode .modal.on .box{animation:fadeIn .18s linear!important}
   .doc-chegou{animation:none;outline:3px solid var(--accentHi);outline-offset:2px}
   .toast{transform:translate(-50%,0)!important}
   .btn:active,.iconbtn:active,.seg a:active,.seg button:active,.chip:active{transform:none}

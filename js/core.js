@@ -1,15 +1,17 @@
 /* =====================================================================================================
    BASE DO REDESIGN (design/direcao.md). Este bloco é a referência para quem escreve telas.
 
-   ROTAS  #home · #hub · #estoque · #fluxos · #aprovacoes · #campo · #obra/<id>/<tela>
-     <tela> é a chave de TAB_FNS e continua a mesma de antes (go('obra',id,'kanban') segue valendo).
-     Cada tela pertence a uma aba de 1º nível (GRUPOS) e aparece como segmento de 2º nível:
-       Hoje ......... hoje
-       Suprimentos .. componentes (Falta comprar) · kanban (Pedidos) · inventario (Almoxarifado) · entreobras (Entre obras)
-       Custos ....... overview (Orçamento) · medicoes (Medições)
-       Execução ..... prazos (Cronograma) · diario (Diário) · equipe (Equipe)
-     #obra/<id> e #obra/<id>/chat abrem 'hoje'; 'chat' abre também o painel do agente (PAINEL.aberto).
-     Tela nova: TAB_FNS.chave = o => html e GRUPOS.find(g=>g.k==='custos').telas.push(['chave','Rótulo']).
+   ROTAS (agente no centro; a casca está no fim deste arquivo, em CASCA)
+     #c/<sessaoId> ........................ a conversa
+     #c/<sessaoId>/v/<chave>[/<obraId>][/cheia]   a conversa com uma visão aberta ao lado (ou em tela cheia)
+       chave de obra = chave de TAB_FNS (hoje, componentes, kanban, inventario, entreobras, overview, medicoes,
+       prazos, diario, equipe) e leva o obraId; chave global = chave de VIEWS (aprovacoes, estoque, hub), sem obra.
+     #campo · #fluxos ..................... páginas inteiras, como antes
+     Compatibilidade: #home → #c/geral · #obra/<id>/<tela> → sessão mais recente da obra com a visão <tela> ·
+       #obra/<id> → idem com 'hoje' · #obra/<id>/chat → a sessão da obra, sem visão · #aprovacoes/#estoque/#hub →
+       Geral com a visão aberta. go(view, obra, tab) continua valendo no código todo: vira abrirVisao na sessão atual.
+     Tela nova de obra: TAB_FNS.chave = o => html (+ GRUPOS[i].telas.push(['chave','Rótulo']) para os contadores).
+     state.view/obra/tab continuam sendo preenchidos (view 'obra' com a visão de obra aberta) para quem os lê.
 
    COMPONENTES GLOBAIS (todos devolvem HTML; onclick é sempre uma string de JS, como no resto do protótipo)
      linhaDecisao({prazo, tom, obra, titulo, conta, valor, acao:{label,onclick}, sec:[{label,onclick}], estado, foco, doc})
@@ -36,22 +38,60 @@
    ===================================================================================================== */
 
 /* ===================== ESTADO / ROTAS ===================== */
-let state = {view:'home', obra:null, tab:'hoje'};
-const PAINEL = {aberto:false};                       // painel do agente da obra (recolhível, à direita)
-function rota(view, obra, tab){
-  if(view!=='obra') return {view, obra:obra||null, tab:tab||'hoje'};
-  if(!tab || tab==='chat'){ if(tab==='chat') PAINEL.aberto=true; tab='hoje'; }
-  const o=OBRAS.find(x=>x.id===obra); if(o && o.status==='plan' && tab==='hoje') PAINEL.aberto=true;   // obra em orçamento: o orçamento corre no chat
-  return {view, obra:obra||null, tab};
+/* modo 'c' = conversa (+ visão opcional) · 'campo' · 'fluxos'. view/obra/tab são derivados (compatibilidade). */
+let state = {modo:'c', sessao:'geral', visao:null, view:'conversa', obra:null, tab:'hoje'};
+const PAGINAS = ['campo','fluxos'];
+const ehVisaoObra = k => !!(k && TAB_FNS[k]);
+const ehVisaoGlobal = k => !!(k && VIEWS[k]) && !['home','obra','conversa',...PAGINAS].includes(k);
+function compat(s){
+  const v=s.visao, ses=s.modo==='c' && sessoes().find(x=>x.id===s.sessao);
+  s.view = s.modo!=='c' ? s.modo : !v ? 'conversa' : v.obra ? 'obra' : v.chave;
+  s.obra = (v&&v.obra) || (ses && ses.escopo && ses.escopo!=='geral' ? ses.escopo : null);
+  s.tab = v&&v.obra ? v.chave : 'hoje';
+  return s;
 }
-function go(view, obra, tab){
-  state=rota(view, obra, tab);
-  const h='#'+[view, obra, view==='obra'?state.tab:tab].filter(Boolean).join('/');
-  if(location.hash!==h) history.pushState(null,'',h);
+/* Traduz a navegação antiga (view, obra, tab) para o estado novo. op.recente: vindo da URL (#obra/…), usa a sessão
+   mais recente da obra (ou a Geral); vindo do código (go), fica na sessão atual e só abre a visão. */
+function rota(view, obra, tab, op={}){
+  const atual = state.modo==='c' ? state.sessao : (CASCA.ultima||idGeral()), va=state.visao;
+  const cheia = op.cheia ?? !!(va && va.cheia), filtro = op.filtro || null;
+  if(PAGINAS.includes(view)) return compat({modo:view, sessao:atual, visao:null});
+  if(!view || view==='home' || view==='conversa') return compat({modo:'c', sessao:idGeral(), visao:null});
+  if(view==='obra'){
+    if(!OBRAS.some(o=>o.id===obra)) return compat({modo:'c', sessao:atual, visao:null});
+    if(tab==='chat'){ CASCA.focar=true; return compat({modo:'c', sessao:sessaoDaObra(obra), visao:null}); }
+    return compat({modo:'c', sessao: op.recente ? sessaoDaObra(obra) : atual, visao:{chave:ehVisaoObra(tab)?tab:'hoje', obra, filtro, cheia}});
+  }
+  if(ehVisaoGlobal(view)) return compat({modo:'c', sessao: op.recente ? idGeral() : atual, visao:{chave:view, obra:null, filtro, cheia}});
+  return compat({modo:'c', sessao:atual, visao:null});
+}
+function hashDe(s){
+  if(s.modo!=='c') return '#'+s.modo;
+  const v=s.visao;
+  return '#c/'+encodeURIComponent(s.sessao)+(v?'/v/'+v.chave+(v.obra?'/'+v.obra:'')+(v.cheia?'/cheia':''):'');
+}
+const hashPara = (view, obra, tab) => hashDe(rota(view, obra, tab));
+function navegar(trocar){
+  CASCA.side=false;
+  const h=hashDe(state); if(location.hash!==h) history[trocar?'replaceState':'pushState'](null,'',h);
   render();
+  if(CASCA.focar){ CASCA.focar=false; focarCampo(); }
 }
-window.onhashchange = () => { const [v,o,t]=location.hash.slice(1).split('/'); if(!v) return;
-  state=rota(v,o,t); if(v==='obra' && t!==state.tab) history.replaceState(null,'','#obra/'+o+'/'+state.tab); render(); };
+function go(view, obra, tab, op){ state=rota(view, obra, tab, op); navegar(); }
+window.onhashchange = () => {
+  const p=location.hash.slice(1).split('/').map(decodeURIComponent); if(!p[0]) return;
+  if(p[0]==='c'){
+    const ses = sessoes().some(s=>s.id===p[1]) ? p[1] : idGeral(); let visao=null;
+    if(p[2]==='v' && p[3]){ const r=p.slice(4), k=p[3], ob=r[0]&&r[0]!=='cheia' ? r.shift() : null, cheia=r[0]==='cheia';
+      if(ehVisaoObra(k)) visao={chave:k, obra:OBRAS.some(o=>o.id===ob)?ob:obraPadrao(ses), filtro:null, cheia};
+      else if(ehVisaoGlobal(k)) visao={chave:k, obra:null, filtro:null, cheia};
+      const va=state.visao; if(visao && va && va.chave===visao.chave && va.obra===visao.obra) visao.filtro=va.filtro; }
+    state=compat({modo:'c', sessao:ses, visao});
+  } else state=rota(p[0], p[1], p[2], {recente:true});
+  const h=hashDe(state); if(location.hash!==h) history.replaceState(null,'',h);
+  CASCA.side=false; render();
+  if(CASCA.focar){ CASCA.focar=false; focarCampo(); }
+};
 const $ = id => document.getElementById(id);
 const esc = t => String(t).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function obra(){ return OBRAS.find(o=>o.id===state.obra); }
@@ -130,10 +170,10 @@ function irDoc(id){
   setTimeout(()=>destacarDoc(id), 0);
 }
 function destacarDoc(id){
-  const m=$('main'); let el=m.querySelector(`[data-doc="${id}"]`);
+  const m=$('vsCorpo')||$('main'); let el=m.querySelector(`[data-doc="${id}"]`);
   if(!el) el=[...m.querySelectorAll('.kc,tr,.ld,.card')].filter(e=>e.textContent.includes(id)).sort((a,b)=>a.textContent.length-b.textContent.length)[0];
   if(!el) return;
-  el.scrollIntoView({block:'center'}); el.classList.remove('doc-chegou'); void el.offsetWidth; el.classList.add('doc-chegou');
+  m.id==='vsCorpo' ? rolarAte(m, el) : el.scrollIntoView({block:'center'}); el.classList.remove('doc-chegou'); void el.offsetWidth; el.classList.add('doc-chegou');
   setTimeout(()=>el.classList.remove('doc-chegou'), 1100);
 }
 
@@ -143,24 +183,39 @@ const stDot = o => o.status==='risco'?'var(--red)':o.status==='ok'?'var(--green)
 const stTxt = o => o.status==='risco'?'em risco':o.status==='ok'?'no prazo':'em orçamento';
 function renderSide(){
   recalcTransf();
-  const item = (v, ic, label, n) => `<a class="nav ${state.view===v?'on':''}" href="#${v}"${state.view===v?' aria-current="page"':''} onclick="go('${v}');return false">${icon(ic)}${label}${n?`<span class="count">${n}</span>`:''}</a>`;
-  const extra = n => item(n.view, n.icon, n.label, n.count&&n.count());
-  const ap = NAV_EXTRA.find(n=>n.view==='aprovacoes'), outros = NAV_EXTRA.filter(n=>n!==ap);
-  const trf = TRANSF.filter(t=>t.sug>0).length;
+  const v=state.visao, emC=state.modo==='c', ss=sessoes(), foco=CASCA.obraFoco=obraFoco();
+  const sess = x => { const on=emC && state.sessao===x.id;
+    return `<a class="nav sess ${on?'on':''}" href="#c/${encodeURIComponent(x.id)}"${on?' aria-current="page"':''} onclick="abrirSessao('${x.id}');return false" title="${esc(x.titulo)}"><span class="sess-t">${esc(x.titulo)}</span>${x.quando?`<small>${esc(x.quando)}</small>`:''}</a>`; };
+  const vis = (k, ob, n, off) => { const on=emC && v && v.chave===k && (v.obra||null)===(ob||null);
+    return `<a class="nav vs ${on?'on':''}${off?' off':''}" href="${hashDe({modo:'c', sessao:emC?state.sessao:idGeral(), visao:{chave:k, obra:ob}})}"${on?' aria-current="page"':''}${off?' title="Abre quando o orçamento for aprovado"':''} onclick="abrirVisao('${k}',${ob?`'${ob}'`:'null'});return false">${icon(VISAO_IC[k]||'list')}<span class="sess-t">${rotuloVisao(k)}</span>${n?`<span class="count" aria-label="${n} pendentes">${n}</span>`:''}</a>`; };
+  const page = n => { const on=state.modo===n.view, c=n.count&&n.count();
+    return `<a class="nav ${on?'on':''}" href="#${n.view}"${on?' aria-current="page"':''} onclick="go('${n.view}');return false">${icon(n.icon)}${n.label}${c?`<span class="count">${c}</span>`:''}</a>`; };
+  const geral = ss.filter(x=>!x.escopo || x.escopo==='geral').sort((a,b)=>(b.id===idGeral())-(a.id===idGeral()));
+  const ap = NAV_EXTRA.find(n=>n.view==='aprovacoes'), paginas = NAV_EXTRA.filter(n=>PAGINAS.includes(n.view));
+  const globais = visoesGlobais().map(k=>vis(k, null, k==='aprovacoes'&&ap&&ap.count ? ap.count() : k==='estoque' ? TRANSF.filter(t=>t.sug>0).length : 0)).join('');
+  const of=OBRAS.find(o=>o.id===foco), plan=of&&of.status==='plan', pend=of?pendObra(of):[];
   $('side').innerHTML = `
     <div class="brand"><div class="logo">${icon('spark',17)}</div>Canteiro<span class="tag">protótipo</span></div>
-    ${item('home','message','Início')}
-    ${ap?extra(ap):''}
-    ${item('hub','building','Todas as obras')}
-    ${item('estoque','swap','Estoque entre obras', trf)}
-    ${outros.map(extra).join('')}
-    <div class="sec">Obras</div>
-    ${OBRAS.map(o=>{ const n=pendObra(o).length, on=state.view==='obra'&&state.obra===o.id;
-      return `<a class="nav ${on?'on':''}" href="#obra/${o.id}/hoje"${on?' aria-current="page"':''} onclick="go('obra','${o.id}','hoje');return false" title="${o.nome} · ${stTxt(o)} · ${o.status==='plan'?'em orçamento':o.progresso+'% executado'}${n?` · ${n} pendências`:''}"><span class="dot" style="background:${stDot(o)}" aria-hidden="true"></span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.nome}</span>${n?`<span class="count" aria-label="${n} pendências">${n}</span>`:`<small>${o.status==='plan'?'orçando':o.progresso+'%'}</small>`}</a>`; }).join('')}
+    <button type="button" class="side-nova" onclick="novaSessao(escopoAtual())">${icon('plus',16)}Nova conversa</button>
+    <nav class="side-bloco" aria-label="Conversas">
+      <div class="sec">Conversas</div>
+      ${geral.map(sess).join('')}
+      ${OBRAS.map(o=>{ const xs=ss.filter(x=>x.escopo===o.id), n=pendObra(o).length;
+        return `<div class="grp" title="${o.nome} · ${stTxt(o)}"><span class="dot" style="background:${stDot(o)}" aria-hidden="true"></span><span class="sess-t">${o.nome}</span>${n?`<span class="count" aria-label="${n} pendências">${n}</span>`:`<small>${o.status==='plan'?'orçando':o.progresso+'%'}</small>`}</div>
+          ${xs.length ? xs.map(sess).join('') : `<button type="button" class="nav sess sess-nova" onclick="novaSessao('${o.id}')">${icon('plus',14)}Começar uma conversa</button>`}`; }).join('')}
+    </nav>
+    <nav class="side-bloco" aria-label="Visões">
+      <div class="sec">Visões</div>
+      ${globais}
+      <div class="vs-sel"><label class="sr-only" for="vsObra">Visões da obra</label>
+        <select id="vsObra" onchange="CASCA.obraEscolhida=this.value;renderSide();">${OBRAS.map(o=>`<option value="${o.id}"${o.id===foco?' selected':''}>${o.nome}</option>`).join('')}</select>${icon('chevDown',14)}</div>
+      ${of?visoesObra().map(k=>vis(k, of.id, k==='hoje'?pendHoje(of).length:pend.filter(p=>p.tela===k).length, plan&&k!=='hoje')).join(''):''}
+    </nav>
+    ${paginas.map(page).join('')}
     <button class="newbtn" onclick="openWizard(1)">${icon('plus')}Nova obra</button>
     <div class="sec">Protótipo</div>
     <a class="nav" href="#" role="switch" aria-checked="${document.body.classList.contains('notes')}" onclick="document.body.classList.toggle('notes');renderSide();return false">${icon('flask')}<span>Notas de validação</span><span class="toggle" aria-hidden="true"></span></a>
-    ${item('fluxos','map','Mapa de fluxos')}
+    ${page({view:'fluxos', icon:'map', label:'Mapa de fluxos'})}
     <div class="fict">${icon('info',14)}<span>Dados fictícios. Nenhum botão compra ou envia nada.</span></div>
     <div class="foot"><div class="av">RZ</div><div>Rizzi<br><span>Construtora RZ · Admin</span></div></div>`;
 }
@@ -316,23 +371,6 @@ function statusObra(o){
   if(o.status==='plan') return `${prazoPill(o)}<span>Orçamento-alvo <b>${brl(o.budget)}</b></span><span class="sepr">·</span><span>${o.tipo}</span><span class="sepr">·</span><span>${o.local}</span>`;
   return `<span><b>${o.fase} ${o.progresso}%</b></span><span class="sepr">·</span><span>entrega prevista <b>${o.previsao}</b> (contrato ${o.prazo})</span>${prazoPill(o)}<span class="sepr">·</span><span>${o.local}</span>`;
 }
-function renderObra(){
-  const o=obra(), plan=o.status==='plan', g=grupoDe(state.tab);
-  const body = (plan && state.tab!=='hoje') ? emOrcamento(o) : (TAB_FNS[state.tab]||TAB_FNS.hoje)(o);
-  const abas = GRUPOS.map(G=>{ const on=g===G, dis=plan&&G.k!=='hoje', n=dis?0:G.pend(o).length, alvo=G.telas[0][0];
-    return `<a class="tab ${on?'on':''}" href="#obra/${o.id}/${alvo}"${on?' aria-current="page"':''}${dis?' aria-disabled="true" title="Abre quando o orçamento for aprovado"':''} onclick="${dis?'':`go('obra','${o.id}','${alvo}');`}return false">${icon(G.icon,15)}${G.label}${n?`<span class="count" aria-label="${n} pendências">${n}</span>`:''}</a>`; }).join('');
-  const telas = g ? g.telas.filter(t=>TAB_FNS[t[0]]) : [];
-  const pg = g ? g.pend(o) : [];
-  const seg = telas.length>1 ? `<div class="subnav">${segmento(telas.map(([k,l])=>({k, label:l, n:pg.filter(p=>p.tela===k).length, onclick:`go('obra','${o.id}','${k}')`})), state.tab, {rotulo:g.label})}</div>` : '';
-  const titTela = state.tab==='hoje' ? '' : `<h2 class="sr-only">${(TABS.find(t=>t[0]===state.tab)||[,,''])[2]}</h2>`;   // h1 obra → h2 tela → h3 cartões
-  return `<div class="top obra-top"><div style="min-width:0"><div class="crumb" style="margin-bottom:4px"><a href="#hub" onclick="go('hub');return false">Todas as obras</a> / ${o.nome}</div>
-      <h1><span style="width:10px;height:10px;border-radius:50%;background:${stDot(o)};flex:none" title="${stTxt(o)}" aria-hidden="true"></span>${o.nome}</h1>
-      <div class="obra-status">${statusObra(o)}</div></div><span class="sp"></span>
-      <button class="btn" id="btnPainel" aria-expanded="${PAINEL.aberto}" aria-controls="painel" title="Atalho: /" onclick="alternarPainel()">${icon('message',15)}${PAINEL.aberto?'Fechar o agente':'Perguntar ao agente'}</button></div>
-    <nav class="tabs" aria-label="Seções da obra">${abas}</nav>
-    <div class="page">${titTela}${seg}${body}</div>`;
-}
-
 /* Ações que o chat da obra propõe (todas registram e podem ser desfeitas). */
 function cobrarGerdau(){
   registrar('Lembrete criado: cobrar a Gerdau (PED-0158 · 3.200 kg de aço) amanhã às 9h', {obra:'vila-nova', origem:'agente'});
@@ -353,22 +391,14 @@ function exigirPalete(){
   render();
 }
 
-/* Painel do agente da obra (o antigo chat da obra): recolhível, à direita, disponível em todas as abas.
-   Abre pelo botão do cabeçalho, pelo atalho / e pela rota #obra/<id>/chat. As sessões ficam num seletor. */
-function tabChat(o){
-  const C = CHATS[o.id] || CHATS['vila-nova'];
-  return `<div class="painel-top"><div style="min-width:0;flex:1"><h2>Agente · ${o.nome}</h2>
-      <div class="sess-sel"><label>Sessão <select onchange="toast('(protótipo) cada sessão guarda o próprio histórico')">${C.sess.map((s,i)=>`<option ${i===0?'selected':''}>${s[0]} · ${s[1]}</option>`).join('')}</select></label></div></div>
-      <button class="iconbtn" onclick="toast('(protótipo) abriria uma sessão nova nesta obra')" aria-label="Nova sessão" title="Nova sessão">${icon('plus',18)}</button>
-      <button class="iconbtn" onclick="fecharPainel()" aria-label="Fechar o painel do agente" title="Fechar (Esc)">${icon('x',18)}</button></div>
-    <div class="msgs">${val('Sessões separadas por assunto ("atraso do aço", "concretagem"): é assim que eles pensam, ou preferem um chat único por obra?')}${C.msgs()}</div>
-    <div class="composer"><div><span class="attach">${icon('building',13)}Contexto: ${o.nome} · só os dados desta obra</span></div><textarea aria-label="Pergunte sobre esta obra" placeholder="Pergunte sobre esta obra…"></textarea>
-      <div class="row"><button class="btn sm" onclick="toast('(protótipo) anexar projeto, NF ou foto')">${icon('clip',14)}Anexar</button><span class="sp"></span><button class="btn amb sm" onclick="toast('(protótipo) enviar')">Enviar ${icon('arrowUp',14)}</button></div></div>`;
-}
+/* O antigo painel do agente virou a conversa do centro. PAINEL.aberto = a conversa está à vista (não está em
+   tela cheia); abrirPainel leva de volta à conversa e foca o campo. CHATS segue como histórico das sessões da obra
+   (usado pelo fallback da casca enquanto js/features/conversa.js não define SESSOES). */
+const PAINEL = { get aberto(){ return state.modo==='c' && !(state.visao && state.visao.cheia); } };
 function manterRolagem(fn){ const m=$('main'), y=m.scrollTop; fn(); m.scrollTop=y; }
-function abrirPainel(focar){ PAINEL.aberto=true; manterRolagem(render); if(focar){ const t=$('painel').querySelector('textarea'); if(t) t.focus(); } }
-function fecharPainel(){ PAINEL.aberto=false; manterRolagem(render); const b=$('btnPainel'); if(b) b.focus(); }
-function alternarPainel(){ PAINEL.aberto ? fecharPainel() : abrirPainel(true); }
+function abrirPainel(focar){ if(state.modo!=='c') go(state.obra?'obra':'home', state.obra, 'chat'); else if(state.visao && state.visao.cheia) telaCheia(false); if(focar) focarCampo(); }
+function fecharPainel(){ if(state.visao) fecharVisao(); }
+function alternarPainel(){ abrirPainel(true); }
 const CHATS = {
   'vila-nova':{sess:[['Atraso do aço (Gerdau)','hoje'],['Concretagem da laje × chuva','hoje'],['Quebra do bloco','27/10'],['Medição da Equipe Silva','26/10'],['Orçamento inicial','03/03']],
     msgs:()=>{ const aco=LOTES.find(l=>l.id==='PED-0167'), conc=LOTES.find(l=>l.id==='PED-0166'), blo=LOTES.find(l=>l.id==='PED-0162');
@@ -583,10 +613,10 @@ function cicloFaixa(ob){
 }
 function irEtapa(ob, k){
   if(!ob){
-    if(k==='sobra'){ SUP.filtro=null; return state.view==='estoque' ? manterRolagem(render) : go('estoque'); }
+    if(k==='sobra'){ SUP.filtro=null; return state.view==='estoque' ? render() : go('estoque'); }
     const c=cicloDe(obrasSup()); ob=((c[k]||[])[0]||{}).ob||'vila-nova';
   }
-  const tela=ETAPA_TELA[k], hash=`#obra/${ob}/${tela}`;
+  const tela=ETAPA_TELA[k], hash=hashPara('obra', ob, tela);
   if(k==='sobra' || (SUP.filtro===k && SUP.hash===hash && location.hash===hash)) SUP.filtro=null;   // clicar de novo tira o filtro
   else { SUP.filtro=k; SUP.hash=hash; }
   if(location.hash===hash) manterRolagem(render); else go('obra', ob, tela);
@@ -893,7 +923,7 @@ function vigiarDialogo(tipo){
 vigiarDialogo('modal'); vigiarDialogo('drawer');
 document.addEventListener('keydown', e=>{
   const topo = $('modal').classList.contains('on') ? 'modal' : $('drawer').classList.contains('on') ? 'drawer' : null;
-  if(e.key==='Escape'){ if(topo==='modal') closeModal(); else if(topo==='drawer') closeDrawer(); else if(PAINEL.aberto && state.view==='obra') fecharPainel(); return; }
+  if(e.key==='Escape'){ if(topo==='modal') closeModal(); else if(topo==='drawer') closeDrawer(); else escCasca(e); return; }
   if(e.key==='Tab' && topo){
     const box=caixaDe(topo), f=focaveis(box); if(!f.length){ e.preventDefault(); box.focus(); return; }
     const a=f[0], z=f[f.length-1], at=document.activeElement;
@@ -902,7 +932,7 @@ document.addEventListener('keydown', e=>{
     else if(!e.shiftKey && at===z){ e.preventDefault(); a.focus(); }
     return;
   }
-  if(e.key==='/' && !topo && state.view==='obra' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)){ e.preventDefault(); abrirPainel(true); }
+  if(e.key==='/' && !topo && state.modo==='c' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) && !document.activeElement.isContentEditable){ e.preventDefault(); if(state.visao&&state.visao.cheia) telaCheia(false); focarCampo('/'); }
 });
 /* Drawers de Suprimentos: cabeçalho com a linha de conta, corpo e rodapé de ação fixo (.sup-pe). */
 function cabDrawer(rotulo, titulo, sub, conta){
@@ -1132,20 +1162,371 @@ function renderFluxos(){
 }
 
 /* ===================== RENDER ===================== */
-/* Telas de topo. Feature nova: VIEWS.chave = () => html (e, se quiser, NAV_EXTRA.push({view,icon,label,count})). */
-const VIEWS = {home:()=>renderHome(), hub:()=>renderHub(), estoque:()=>renderEstoque(), fluxos:()=>renderFluxos(), obra:()=>obra()?renderObra():renderHome()};
+/* Visões globais: VIEWS.chave = () => html (sem obra). Página inteira: PAGINAS (campo, fluxos). */
+const VIEWS = {hub:()=>renderHub(), estoque:()=>renderEstoque(), fluxos:()=>renderFluxos()};
 const NAV_EXTRA = [];
 function addCSS(css){ const s=document.createElement('style'); s.textContent=css; document.head.appendChild(s); }
 function render(){
+  compat(state);
+  if(state.modo==='c') CASCA.ultima=state.sessao;
   renderSide();
-  const m=$('main');
-  m.innerHTML=(VIEWS[state.view]||VIEWS.home)();
-  m.scrollTop=0;
-  const o = state.view==='obra' && obra(), p=$('painel'), aberto=!!(o && PAINEL.aberto);
-  const ms=p.querySelector('.msgs'), y=ms&&p.dataset.obra===state.obra ? ms.scrollTop : null;
-  document.querySelector('.app').classList.toggle('com-painel', aberto);
-  p.innerHTML = aberto ? tabChat(o) : ''; p.dataset.obra = aberto ? o.id : '';
-  if(aberto){ const n=p.querySelector('.msgs'); n.scrollTop = y ?? n.scrollHeight; }
+  const app=document.querySelector('.app'), m=$('main');
+  app.classList.toggle('side-aberta', !!CASCA.side);
+  if(state.modo!=='c'){
+    app.classList.remove('com-visao','vs-cheia');
+    m.className='main'; m.innerHTML=(VIEWS[state.modo]||VIEWS.fluxos)(); m.scrollTop=0;
+    const vs=$('visao'); vs.hidden=true; vs.innerHTML=''; vs.dataset.k='';
+  } else { desenharConversa(); desenharVisao(); }
   document.dispatchEvent(new Event('rendered'));
 }
 
+/* ===================== CASCA: AGENTE NO CENTRO =====================
+   Esquerda: conversas (Geral + sessões por obra) e visões · centro: a conversa · direita: a visão aberta.
+   API para js/features/conversa.js (contrato "Agente no centro"):
+     SESSOES (da Conversa) · renderConversa(sessao) → html das mensagens · renderMsg(msg) → html de uma mensagem
+     responder(texto, sessao) → Promise<msg[]>  (a casca já empurrou {de:'voce', html} em sessao.msgs e põe as
+       respostas em seguida; sessao.escopoMsg = obraId do @obra, ou null; sessao.contexto = {chave, obra, filtro}
+       quando a pergunta veio de "Perguntar sobre isto")
+     abrirVisao(chave, obraId, {filtro, cheia}) · fecharVisao() · telaCheia(on) · perguntarSobre(chave, obraId, filtro)
+     trocarEscopo(sessaoId, escopo) · novaSessao(escopo, titulo) → id · abrirSessao(id) · sessaoAtual()
+     SUGESTOES (opcional, da Conversa): array de textos ou função(sessao) → array; são os chips acima do campo.
+     msg.abrir = {chave, obra, filtro} (opcional): a casca abre essa visão quando a mensagem chega.
+   Enquanto a Conversa não define SESSOES/renderConversa/responder, um fallback simples (CHATS + briefing) segura a casca. */
+const CASCA = {ultima:null, obraFoco:null, obraEscolhida:null, side:false, focar:false, ctx:null, pensando:false, rascunho:''};
+ICONS.maximize = ICONS.maximize || '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/>';
+ICONS.minimize = ICONS.minimize || '<path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="m14 10 7-7"/><path d="m3 21 7-7"/>';
+ICONS.panel = ICONS.panel || '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/>';
+ICONS.book = ICONS.book || '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/>';
+
+const VISAO_ROT = {hoje:'Hoje', componentes:'Falta comprar', kanban:'Pedidos', inventario:'Almoxarifado', entreobras:'Entre obras', overview:'Orçamento', medicoes:'Medições', prazos:'Cronograma', diario:'Diário', equipe:'Equipe', aprovacoes:'Aprovações', estoque:'Estoque entre obras', hub:'Todas as obras'};
+const VISAO_IC = {hoje:'checkCircle', componentes:'bricks', kanban:'package', inventario:'archive', entreobras:'swap', overview:'chart', medicoes:'ruler', prazos:'clock', diario:'book', equipe:'users', aprovacoes:'checkCircle', estoque:'swap', hub:'building'};
+const VISAO_ALIAS = {hoje:'pendencias resumo', componentes:'comprar compras insumos falta', kanban:'pedidos compras entregas chega', inventario:'almoxarifado estoque saldo', entreobras:'transferencia sobra', overview:'orcamento custos verba', medicoes:'medicao empreiteiro pagamento', prazos:'cronograma prazo atraso', diario:'diario rdo', equipe:'equipe pessoal aso', aprovacoes:'aprovacoes pendencias propostas', estoque:'estoque entre obras transferencia', hub:'obras todas'};
+const ORDEM_VISOES = ['hoje','componentes','kanban','inventario','overview','medicoes','prazos','diario','equipe'];
+const visoesObra = () => [...ORDEM_VISOES.filter(k=>TAB_FNS[k]), ...Object.keys(TAB_FNS).filter(k=>!ORDEM_VISOES.includes(k) && k!=='entreobras')];
+const visoesGlobais = () => ['aprovacoes','estoque','hub'].filter(ehVisaoGlobal).concat(Object.keys(VIEWS).filter(k=>ehVisaoGlobal(k) && !['aprovacoes','estoque','hub'].includes(k)));
+function rotuloVisao(k){ if(VISAO_ROT[k]) return VISAO_ROT[k]; const g=GRUPOS.flatMap(x=>x.telas).find(t=>t[0]===k), t=TABS.find(t=>t[0]===k); return (g&&g[1])||(t&&t[2])||k; }
+const semAcento = t => String(t).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+const nomeObra = id => (OBRAS.find(o=>o.id===id)||{}).nome || id;
+
+/* ---------- sessões (da Conversa; fallback enquanto ela não chega) ---------- */
+let SESSOES_FB = null;
+function sessoes(){
+  if(typeof SESSOES!=='undefined' && Array.isArray(SESSOES)) return SESSOES;
+  if(!SESSOES_FB) SESSOES_FB=[{id:'geral', titulo:'Geral · briefing de hoje', escopo:'geral', quando:'07:00', msgs:[], fb:'geral'}];
+  if(typeof CHATS!=='undefined') OBRAS.forEach(o=>{ const C=CHATS[o.id]; if(!C || SESSOES_FB.some(x=>x.escopo===o.id && x.fb)) return;
+    C.sess.forEach(([t,q],i)=>SESSOES_FB.push({id:o.id+'-'+i, titulo:t, escopo:o.id, quando:q, msgs:[], fb:i===0?o.id:'vazia'})); });
+  return SESSOES_FB;
+}
+const idGeral = () => { const ss=sessoes(); return (ss.find(x=>x.id==='geral')||ss.find(x=>!x.escopo||x.escopo==='geral')||ss[0]||{id:'geral'}).id; };
+function sessaoAtual(){ const ss=sessoes(); return ss.find(x=>x.id===state.sessao) || ss.find(x=>x.id===idGeral()) || {id:'geral', titulo:'Geral', escopo:'geral', msgs:[]}; }
+function sessaoDaObra(obraId){ const x=sessoes().find(s=>s.escopo===obraId); return x ? x.id : criarSessao(obraId); }
+function escopoAtual(){ const s=sessaoAtual(); return s.escopo || 'geral'; }
+function obraPadrao(sesId){ const s=sessoes().find(x=>x.id===sesId); return s && s.escopo && s.escopo!=='geral' ? s.escopo : CASCA.obraFoco || OBRAS[0].id; }
+function obraFoco(){
+  if(CASCA.obraEscolhida && OBRAS.some(o=>o.id===CASCA.obraEscolhida)) return CASCA.obraEscolhida;
+  const v=state.visao; if(v && v.obra) return v.obra;
+  const e=state.modo==='c' && escopoAtual(); return e && e!=='geral' ? e : (CASCA.obraFoco && OBRAS.some(o=>o.id===CASCA.obraFoco) ? CASCA.obraFoco : OBRAS[0].id);
+}
+function criarSessao(escopo, titulo){
+  const id='s'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+  sessoes().unshift({id, titulo: titulo || (escopo&&escopo!=='geral' ? `Nova conversa · ${curtaObra(escopo)}` : 'Nova conversa'), escopo: escopo||'geral', quando:'agora', msgs:[]});
+  return id;
+}
+
+/* ---------- API pública ---------- */
+function abrirSessao(id){ state=compat({modo:'c', sessao:id, visao:state.modo==='c'?state.visao:null}); CASCA.obraEscolhida=null; navegar(); }
+function novaSessao(escopo, titulo){
+  const id=criarSessao(escopo, titulo);
+  state=compat({modo:'c', sessao:id, visao:state.modo==='c'?state.visao:null}); CASCA.obraEscolhida=null; CASCA.side=false;
+  history.pushState(null,'',hashDe(state));
+  queueMicrotask(()=>{ render(); focarCampo(); });            // quem chamou pode pôr mensagens na sessão antes de desenhar
+  return id;
+}
+function trocarEscopo(sessaoId, escopo){
+  const s=sessoes().find(x=>x.id===sessaoId); if(!s) return null;
+  s.escopo = escopo || 'geral'; CASCA.obraEscolhida=null;
+  if(state.sessao===sessaoId && state.modo==='c') render(); else renderSide();
+  return s;
+}
+function abrirVisao(chave, obraId, op={}){
+  const va=state.visao, cheia = op.cheia ?? !!(va && va.cheia), ses = state.modo==='c' ? state.sessao : (CASCA.ultima||idGeral());
+  let visao;
+  if(ehVisaoObra(chave)) visao={chave, obra: OBRAS.some(o=>o.id===obraId) ? obraId : obraPadrao(ses), filtro:op.filtro||null, cheia};
+  else if(ehVisaoGlobal(chave)) visao={chave, obra:null, filtro:op.filtro||null, cheia};
+  else return toast('Essa visão não existe neste protótipo');
+  const mesma = va && va.chave===visao.chave && va.obra===visao.obra;
+  if(mesma && !('filtro' in op)) visao.filtro=va.filtro;
+  CASCA.obraEscolhida=null;
+  state=compat({modo:'c', sessao:ses, visao}); navegar(mesma);
+}
+function fecharVisao(){
+  if(!state.visao) return;
+  state=compat({...state, visao:null}); navegar();
+  focarCampo();
+}
+function telaCheia(on){
+  const v=state.visao; if(!v) return;
+  on = on===undefined ? !v.cheia : !!on; if(on===v.cheia) return;
+  state=compat({...state, visao:{...v, cheia:on}}); navegar(true);
+  const b=document.querySelector(on?'.vs-volta':'.vs-cheia-btn'); if(b) b.focus({preventScroll:true});
+}
+function perguntarSobre(chave, obraId, filtro){
+  const v=state.visao||{}; chave=chave||v.chave; obraId = obraId===undefined ? v.obra : obraId; filtro = filtro===undefined ? v.filtro : filtro;
+  if(v.cheia) telaCheia(false);
+  if(state.modo!=='c'){ state=compat({modo:'c', sessao:CASCA.ultima||idGeral(), visao:null}); navegar(); }
+  CASCA.ctx = chave ? {chave, obra:obraId||null, filtro:filtro||null} : null;
+  const t=$('caTxt'); if(!t) return;
+  t.value = !chave ? '' : typeof sementeSobre==='function' ? sementeSobre(chave, obraId||null, filtro||'')
+    : `Sobre ${rotuloVisao(chave)}${obraId?' · '+curtaObra(obraId):''}${filtro?' · '+filtro:''}: `;
+  CASCA.rascunho=t.value;
+  campoMudou(); focarCampo();
+}
+function focarCampo(inserir){
+  const t=$('caTxt'); if(!t) return;
+  if(inserir){ const a=t.selectionStart??t.value.length; t.setRangeText(inserir, a, t.selectionEnd??a, 'end'); campoMudou(); }
+  t.focus({preventScroll:true}); if(!inserir) t.setSelectionRange(t.value.length, t.value.length);
+}
+function alternarSide(){ CASCA.side=!CASCA.side; document.querySelector('.app').classList.toggle('side-aberta', CASCA.side); if(CASCA.side){ const a=$('side').querySelector('.nav.on,.nav'); if(a) a.focus(); } }
+function limparFiltroVisao(){ if(!state.visao) return; state.visao={...state.visao, filtro:null}; render(); }
+/* Esc (sem diálogo aberto): fecha o menu, a lateral sobreposta, sai da tela cheia ou fecha a visão. */
+function escCasca(e){
+  if(fecharMenus()) return;
+  if(CASCA.side){ alternarSide(); return; }
+  const a=document.activeElement; if(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.value) return;
+  if(state.modo!=='c' || !state.visao) return;
+  state.visao.cheia ? telaCheia(false) : fecharVisao();
+}
+
+/* ---------- a conversa (centro) ---------- */
+function msgFB(m){ return m.de==='voce' ? meMsg(m.html) : aiMsg(m.tools&&m.tools.length?m.tools:null, m.html+(m.cartoes||[]).join('')); }
+function briefingFB(){
+  if(typeof PROPOSTAS==='undefined') return aiMsg(null, '<b>Bom dia, Rizzi.</b> O briefing do dia aparece aqui.');
+  const fila=PROPOSTAS.filter(p=>p.brief&&naFila(p)).sort(porUrg), ab=fila.filter(p=>p.st==='pendente');
+  return aiMsg(['propostas do agente','3 obras','previsão do tempo'], `<b>Bom dia, Rizzi.</b> ${ab.length?`${ab.length} ${ab.length>1?'decisões pedem':'decisão pede'} você hoje, a mais urgente primeiro.`:'Nada pede você agora.'}
+    <div class="ca-cartao">${listaDecisoes(fila.map(p=>linhaProp(p,{foco:p===ab[0]})))}</div>`);
+}
+function mensagensHTML(s){
+  if(typeof renderConversa==='function') return renderConversa(s);
+  const um = typeof renderMsg==='function' ? renderMsg : msgFB;
+  const antes = s.fb==='geral' ? briefingFB() : s.fb && s.fb!=='vazia' && typeof CHATS!=='undefined' && CHATS[s.fb] ? CHATS[s.fb].msgs() : '';
+  return antes + s.msgs.map(um).join('');
+}
+const pensandoHTML = () => `<div class="msg ai ca-pensando" role="status"><div class="aiav">${icon('spark',20)}</div><div class="bub">${icon('wrench',14)}usando ferramentas…</div></div>`;
+function vazioHTML(s){
+  const e=s.escopo&&s.escopo!=='geral' ? nomeObra(s.escopo) : null;
+  return `<div class="ca-vazio"><div class="aiav">${icon('spark',20)}</div><h2>${e?`Conversa sobre a ${e}`:'Conversa nova'}</h2>
+    <p>${e?`O agente olha só os dados da ${e}.`:'O agente enxerga todas as obras.'} Escreva <b>@</b> para perguntar sobre outra obra só nesta mensagem, ou <b>/</b> para abrir uma visão ao lado.</p></div>`;
+}
+const SUGESTOES_PADRAO = ['vamos começar pela Vila Nova, quero um relatório da fase da obra','por que só tem 2.760 blocos?','o que chega amanhã?','quem está na obra hoje?','estamos no prazo?','@Loja Centro o que sobra?','pede 600 kg de aço','transfere o cimento da Loja Centro'];
+function sugestoes(s){ const g = typeof SUGESTOES!=='undefined' ? SUGESTOES : SUGESTOES_PADRAO; const l = typeof g==='function' ? g(s) : g; return Array.isArray(l) ? l : []; }
+function escopoBotao(s){
+  const o=s.escopo&&s.escopo!=='geral' && OBRAS.find(x=>x.id===s.escopo);
+  return `<button type="button" class="ca-escopo" id="caEscopo" aria-haspopup="menu" aria-expanded="false" aria-controls="caEscopoMenu" onclick="menuEscopo()">
+    ${o?`<span class="dot" style="background:${stDot(o)}" aria-hidden="true"></span>${o.nome}`:`${icon('building',14)}Todas as obras`}${icon('chevDown',14)}</button>
+    <div class="ca-menu-pop" id="caEscopoMenu" role="menu" aria-label="Escopo da conversa" hidden>
+      ${[{id:'geral', nome:'Todas as obras'}, ...OBRAS].map(x=>{ const on=(s.escopo||'geral')===x.id;
+        return `<button type="button" role="menuitemradio" aria-checked="${on}" onclick="escolherEscopo('${x.id}')">${x.id==='geral'?icon('building',14):`<span class="dot" style="background:${stDot(x)}" aria-hidden="true"></span>`}<span>${x.nome}</span>${x.id==='geral'?'<small>enxerga as 3 obras</small>':`<small>${stTxt(x)}</small>`}${on?icon('check',14):''}</button>`; }).join('')}
+    </div>`;
+}
+function desenharConversa(){
+  const s=sessaoAtual(), m=$('main');
+  if(!m.classList.contains('ca')){
+    m.className='main ca';
+    m.innerHTML = `<header class="ca-top" id="caTop"></header>
+      <div class="msgs ca-msgs" id="caMsgs" tabindex="-1" aria-label="Mensagens"></div>
+      <div class="ca-pe">
+        <div class="chips" id="caChips" aria-label="Sugestões"></div>
+        <div class="composer ca-comp">
+          <div class="ca-ac" id="caAc" role="listbox" aria-label="Sugestões do campo" hidden></div>
+          <div class="ca-ctx" id="caCtx"></div>
+          <label class="sr-only" for="caTxt">Mensagem para o agente</label>
+          <textarea id="caTxt" rows="1" autocomplete="off" aria-autocomplete="list" aria-controls="caAc" aria-expanded="false"></textarea>
+          <div class="row"><button type="button" class="iconbtn" aria-label="Anexar projeto, NF ou foto" title="Anexar projeto, NF ou foto" onclick="toast('(protótipo) anexar projeto, NF ou foto')">${icon('clip',18)}</button>
+            <span class="ca-dica"><kbd>@</kbd> obra <kbd>/</kbd> visão</span><span class="sp"></span>
+            <button type="button" class="btn amb sm" id="caEnviar" onclick="enviarCampo()">Enviar ${icon('arrowUp',14)}</button></div>
+        </div>
+      </div>`;
+    ligarCampo();
+  }
+  const top=$('caTop');
+  top.innerHTML = `<button type="button" class="iconbtn ca-side" aria-label="Mostrar conversas e visões" aria-expanded="${!!CASCA.side}" onclick="alternarSide()">${icon('panel',18)}</button>
+    <div class="ca-id">${escopoBotao(s)}<h1 title="${esc(s.titulo)}">${esc(s.titulo)}</h1></div><span class="sp"></span>
+    <button type="button" class="btn sm" onclick="novaSessao(escopoAtual())">${icon('plus',14)}Nova conversa</button>`;
+  const box=$('caMsgs'), k=s.id+':'+s.msgs.length+':'+(CASCA.pensando?1:0), mesma=box.dataset.k===k, mesmaSes=box.dataset.s===s.id, y=box.scrollTop;
+  const corpo=mensagensHTML(s);
+  const pensa = CASCA.pensando && !(typeof renderPensando==='function' && typeof responder==='function');   // o responder da Conversa desenha o próprio
+  box.innerHTML = `<h2 class="sr-only">Mensagens</h2>` + (corpo.trim() ? corpo : vazioHTML(s)) + (pensa ? pensandoHTML() : '');
+  box.dataset.k=k; box.dataset.s=s.id;
+  if(mesma) box.scrollTop=y; else rolarParaUltima(box, mesmaSes);
+  const chips = typeof renderSugestoes==='function' ? renderSugestoes(s) : sugestoes(s).map(c=>`<button type="button" class="chip" onclick="enviar(this.textContent)">${esc(c)}</button>`).join('');
+  $('caChips').innerHTML = chips; $('caChips').hidden = !chips;
+  const t=$('caTxt'), e=s.escopo&&s.escopo!=='geral' ? curtaObra(s.escopo) : null;
+  t.placeholder = e ? `Pergunte ou peça sobre a ${e}…` : 'Pergunte ou peça sobre qualquer obra…';
+  if(t.value!==CASCA.rascunho && document.activeElement!==t) t.value=CASCA.rascunho;
+  campoMudou(true);
+}
+/* Mostra o começo da última resposta (não o fim): o gerente lê de cima. */
+function rolarParaUltima(box, suave){
+  const raiz=box.querySelector(':scope > .cv-fio')||box, ms=[...raiz.children].filter(x=>!x.matches('.val,.callout,.sr-only')), u=ms[ms.length-1]; if(!u) return;
+  const eu=[...ms].reverse().find(x=>x.classList.contains('me')), alvo = u.classList.contains('me')||!eu ? u : eu;
+  const fim=box.scrollHeight-box.clientHeight, y=Math.min(fim, Math.max(0, alvo.offsetTop - box.offsetTop - 16));
+  const topo = alvo.offsetTop - box.offsetTop + alvo.offsetHeight <= box.clientHeight ? fim : y;
+  box.scrollTo({top:topo, behavior: suave && !matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'auto'});
+}
+
+/* ---------- campo: @obra (escopo da mensagem) e /visão (abre a visão) ---------- */
+const AC = {itens:[], i:0, tipo:null, ini:0};
+function aliasesObra(o){ return [o.nome, curtaObra(o.id), o.id].filter(Boolean); }
+function obraDoTexto(t){
+  const n=semAcento(t); let melhor=null;
+  OBRAS.forEach(o=>aliasesObra(o).forEach(a=>{ const k='@'+semAcento(a); const i=n.indexOf(k);
+    if(i>=0 && !/[a-z0-9]/.test(n[i+k.length]||'') && (!melhor || a.length>melhor.a.length)) melhor={o, a}; }));
+  return melhor && melhor.o.id;
+}
+function marcarMencoes(html){
+  let h=html; OBRAS.forEach(o=>aliasesObra(o).sort((a,b)=>b.length-a.length).forEach(a=>{ h=h.replace(new RegExp('@'+a.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?![\\wÀ-ú])','gi'), x=>`<span class="mencao">${x}</span>`); }));
+  return h.replace(/<span class="mencao">(<span class="mencao">)+/g,'<span class="mencao">').replace(/(<\/span>)+(?=<\/span>)/g,'');
+}
+function ligarCampo(){
+  const t=$('caTxt');
+  t.addEventListener('input', ()=>{ CASCA.rascunho=t.value; campoMudou(); });
+  t.addEventListener('click', ()=>acAtualizar());
+  t.addEventListener('blur', ()=>setTimeout(()=>{ if(document.activeElement!==t) acFechar(); }, 120));
+  t.addEventListener('keydown', e=>{
+    if(!$('caAc').hidden && AC.itens.length){
+      if(e.key==='ArrowDown'||e.key==='ArrowUp'){ e.preventDefault(); AC.i=(AC.i+(e.key==='ArrowDown'?1:-1)+AC.itens.length)%AC.itens.length; acDesenhar(); return; }
+      if((e.key==='Enter'&&!e.shiftKey)||e.key==='Tab'){ e.preventDefault(); acEscolher(AC.i); return; }
+      if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); acFechar(); return; }
+    }
+    if(e.key==='Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); enviarCampo(); }
+  });
+  t.addEventListener('keyup', e=>{ if(/^Arrow(Left|Right)$|^Home$|^End$/.test(e.key)) acAtualizar(); });
+}
+function campoMudou(semMenu){
+  const t=$('caTxt'); if(!t) return;
+  t.style.height='auto'; t.style.height=Math.min(180, t.scrollHeight)+'px';
+  const ob=obraDoTexto(t.value), c=CASCA.ctx, s=sessaoAtual(), partes=[];
+  if(c) partes.push(`<span class="ca-tag">${icon(VISAO_IC[c.chave]||'list',13)}Sobre ${rotuloVisao(c.chave)}${c.obra?' · '+curtaObra(c.obra):''}${c.filtro?' · '+esc(c.filtro):''}<button type="button" aria-label="Tirar o contexto da visão" onclick="CASCA.ctx=null;campoMudou(true)">${icon('x',12)}</button></span>`);
+  if(ob && ob!==s.escopo) partes.push(`<span class="ca-tag">${icon('building',13)}Só nesta mensagem: ${curtaObra(ob)}</span>`);
+  $('caCtx').innerHTML=partes.join(''); $('caCtx').hidden=!partes.length;
+  $('caEnviar').disabled = !t.value.trim() || CASCA.pensando;
+  if(!semMenu) acAtualizar();
+}
+function acAtualizar(){
+  const t=$('caTxt'), antes=t.value.slice(0, t.selectionStart);
+  const ma=/(^|\s)@([\p{L}\d-]*(?: [\p{L}\d-]*)?)$/u.exec(antes), mb=/(^|\s)\/([\p{L}\d-]*)$/u.exec(antes);
+  if(ma){
+    const q=semAcento(ma[2]).trim();
+    AC.tipo='@'; AC.ini=antes.length-ma[2].length-1;
+    AC.itens=OBRAS.filter(o=>!q || aliasesObra(o).some(a=>semAcento(a).includes(q)) || q.split(' ').every(w=>semAcento(o.nome).includes(w)))
+      .map(o=>({rot:o.nome, dica:stTxt(o), dot:stDot(o), valor:o.id}));
+  } else if(mb){
+    const q=semAcento(mb[2]), ob=obraDoTexto(t.value) || (escopoAtual()!=='geral' ? escopoAtual() : obraFoco());
+    AC.tipo='/'; AC.ini=antes.length-mb[2].length-1;
+    AC.itens=[...visoesObra().map(k=>({k, ob})), ...visoesGlobais().map(k=>({k, ob:null}))]
+      .filter(x=>!q || semAcento(rotuloVisao(x.k)+' '+x.k+' '+(VISAO_ALIAS[x.k]||'')).includes(q))
+      .map(x=>({rot:rotuloVisao(x.k), dica:x.ob?curtaObra(x.ob):'todas as obras', ic:VISAO_IC[x.k]||'list', valor:x}));
+  } else return acFechar();
+  if(!AC.itens.length) return acFechar();
+  AC.i=Math.min(AC.i, AC.itens.length-1); acDesenhar();
+}
+function acDesenhar(){
+  const b=$('caAc'), t=$('caTxt');
+  b.innerHTML = `<div class="cab" aria-hidden="true">${AC.tipo==='@'?'Perguntar sobre a obra':'Abrir a visão ao lado'}</div>`+AC.itens.map((x,i)=>`<div role="option" id="caAc${i}" aria-selected="${i===AC.i}" onmousedown="event.preventDefault()" onclick="acEscolher(${i})">${x.dot?`<span class="dot" style="background:${x.dot}" aria-hidden="true"></span>`:icon(x.ic,15)}<span>${x.rot}</span><span class="h">${x.dica}</span></div>`).join('');
+  b.hidden=false; t.setAttribute('aria-expanded','true'); t.setAttribute('aria-activedescendant','caAc'+AC.i);
+  const el=$('caAc'+AC.i); if(el) el.scrollIntoView({block:'nearest'});
+}
+function acFechar(){ const b=$('caAc'), t=$('caTxt'); if(!b||b.hidden) return false; b.hidden=true; AC.itens=[]; AC.i=0; t.setAttribute('aria-expanded','false'); t.removeAttribute('aria-activedescendant'); return true; }
+function acEscolher(i){
+  const x=AC.itens[i], t=$('caTxt'); if(!x) return;
+  const fim=t.selectionStart;
+  if(AC.tipo==='@'){ t.setRangeText('@'+curtaObra(x.valor)+' ', AC.ini, fim, 'end'); }
+  else { t.setRangeText('', AC.ini, fim, 'end'); t.value=t.value.replace(/\s{2,}/g,' '); abrirVisao(x.valor.k, x.valor.ob); }
+  CASCA.rascunho=t.value; acFechar(); campoMudou(true); t.focus({preventScroll:true});
+}
+function fecharMenus(){ const m=$('caEscopoMenu'); if(m && !m.hidden){ m.hidden=true; const b=$('caEscopo'); b.setAttribute('aria-expanded','false'); b.focus(); return true; } return acFechar(); }
+function menuEscopo(){
+  const m=$('caEscopoMenu'), b=$('caEscopo'), abrir=m.hidden; m.hidden=!abrir; b.setAttribute('aria-expanded', abrir);
+  if(abrir){ const on=m.querySelector('[aria-checked=true]')||m.querySelector('button'); on.focus(); }
+}
+function escolherEscopo(id){ const s=sessaoAtual(); trocarEscopo(s.id, id); const b=$('caEscopo'); if(b) b.focus(); }
+document.addEventListener('keydown', e=>{
+  const m=$('caEscopoMenu'); if(!m || m.hidden || !m.contains(document.activeElement)) return;
+  const bs=[...m.querySelectorAll('button')], i=bs.indexOf(document.activeElement);
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){ e.preventDefault(); bs[(i+(e.key==='ArrowDown'?1:-1)+bs.length)%bs.length].focus(); }
+  else if(e.key==='Home'||e.key==='End'){ e.preventDefault(); bs[e.key==='Home'?0:bs.length-1].focus(); }
+  else if(e.key==='Tab'){ m.hidden=true; $('caEscopo').setAttribute('aria-expanded','false'); }
+});
+document.addEventListener('mousedown', e=>{ const m=$('caEscopoMenu'); if(m && !m.hidden && !e.target.closest('#caEscopoMenu,#caEscopo')){ m.hidden=true; $('caEscopo').setAttribute('aria-expanded','false'); } });
+
+const esperar = ms => new Promise(r=>setTimeout(r, ms));
+function enviarMensagem(texto){ return enviar(texto); }       // nome que os chips da Conversa procuram
+function enviarCampo(){ const t=$('caTxt'); if(t) enviar(t.value); }
+async function enviar(texto){
+  texto=String(texto||'').trim(); if(!texto || CASCA.pensando) return;
+  const cmd=/^\/(\S+)\s*$/.exec(texto);                         // "/almoxarifado" sozinho: abre a visão, não vai ao agente
+  if(cmd){ const q=semAcento(cmd[1]), k=[...visoesObra(), ...visoesGlobais()].find(k=>semAcento(rotuloVisao(k)+' '+k+' '+(VISAO_ALIAS[k]||'')).includes(q));
+    if(k){ const t=$('caTxt'); t.value=''; CASCA.rascunho=''; campoMudou(true); abrirVisao(k, ehVisaoObra(k)?(escopoAtual()!=='geral'?escopoAtual():obraFoco()):null); return; } }
+  if(state.modo!=='c'){ state=compat({modo:'c', sessao:CASCA.ultima||idGeral(), visao:null}); navegar(); }
+  const s=sessaoAtual(), t=$('caTxt');
+  s.escopoMsg = obraDoTexto(texto) || null;
+  if(CASCA.ctx) s.contexto=CASCA.ctx; else delete s.contexto;
+  s.visao = state.visao ? {chave:state.visao.chave, obra:state.visao.obra, filtro:state.visao.filtro} : null;   // a Conversa lê a visão aberta daqui
+  s.msgs.push({de:'voce', hora:hhmm(), html:marcarMencoes(esc(texto))});
+  CASCA.ctx=null; CASCA.rascunho=''; if(t){ t.value=''; }
+  CASCA.pensando=true; render();
+  const t0=performance.now(); let novas;
+  try{ novas = typeof responder==='function' ? await responder(texto, s)
+         : [{de:'agente', html:'Ainda não sei responder isso neste protótipo. Tente uma das sugestões acima do campo.'}]; }
+  catch(err){ console.error(err); novas=[{de:'agente', html:'Não consegui responder agora. Tente de novo em instantes.'}]; }
+  await esperar(Math.max(0, 600-(performance.now()-t0)));
+  CASCA.pensando=false;
+  (Array.isArray(novas)?novas:[novas]).filter(Boolean).forEach(m=>s.msgs.push(m));
+  s.quando='agora';
+  const abrir=[...(novas||[])].reverse().find(m=>m&&m.abrir);
+  render();
+  if(abrir && abrir.abrir) abrirVisao(abrir.abrir.chave, abrir.abrir.obra, {filtro:abrir.abrir.filtro});
+  focarCampo();
+}
+
+/* ---------- a visão aberta (direita / tela cheia) ---------- */
+function statusCurto(o){ return o.status==='plan' ? 'em orçamento' : o.atraso>0 ? `<span class="vs-atraso">${o.atraso} dias de atraso</span>` : stTxt(o); }
+function visaoHTML(v){
+  const o=v.obra && OBRAS.find(x=>x.id===v.obra), rot=rotuloVisao(v.chave);
+  const corpo = o ? `<div class="page vs-page">${(o.status==='plan' && v.chave!=='hoje') ? emOrcamento(o) : (TAB_FNS[v.chave]||TAB_FNS.hoje)(o)}</div>` : (VIEWS[v.chave]||VIEWS.hub)();
+  const arg = `'${v.chave}',${o?`'${o.id}'`:'null'}`;
+  return `<header class="vs-top">
+      ${v.cheia?`<button type="button" class="btn sm vs-volta" onclick="telaCheia(false)">${icon('arrowLeft',15)}Voltar à conversa</button>`:''}
+      <div class="vs-id"><div class="vs-obra">${o?`<span class="dot" style="background:${stDot(o)}" aria-hidden="true"></span><span>${o.nome}</span><span class="sepr" aria-hidden="true">·</span><span>${statusCurto(o)}</span>`:'<span>Todas as obras</span>'}</div>
+        <h2 id="vsTit">${icon(VISAO_IC[v.chave]||'list',17)}${rot}</h2></div>
+      <span class="sp"></span>
+      <button type="button" class="btn sm" onclick="perguntarSobre(${arg},${v.filtro?`'${esc(v.filtro).replace(/'/g,'&#39;')}'`:'null'})">${icon('message',14)}Perguntar sobre isto</button>
+      <button type="button" class="iconbtn vs-cheia-btn" aria-pressed="${!!v.cheia}" aria-label="${v.cheia?'Sair da tela cheia':'Tela cheia'}" title="${v.cheia?'Sair da tela cheia':'Tela cheia'}" onclick="telaCheia(${!v.cheia})">${icon(v.cheia?'minimize':'maximize',17)}</button>
+      <button type="button" class="iconbtn" aria-label="Fechar a visão" title="Fechar (Esc)" onclick="fecharVisao()">${icon('x',18)}</button>
+    </header>
+    ${v.filtro?`<div class="vs-filtro" role="status">${icon('list',14)}<span>Destacando <b>${esc(v.filtro)}</b></span><button type="button" class="link" onclick="limparFiltroVisao()">Tirar o destaque</button></div>`:''}
+    <div class="vs-corpo" id="vsCorpo">${corpo}</div>`;
+}
+function desenharVisao(){
+  const v=state.visao, el=$('visao'), app=document.querySelector('.app');
+  app.classList.toggle('com-visao', !!v); app.classList.toggle('vs-cheia', !!(v&&v.cheia));
+  if(!v){ el.hidden=true; el.innerHTML=''; el.dataset.k=''; return; }
+  const k=v.chave+'/'+(v.obra||''), c0=$('vsCorpo'), mesma=el.dataset.k===k, y=mesma&&c0?c0.scrollTop:0, abriu=el.hidden;
+  const foco=document.activeElement, idFoco=foco && el.contains(foco) && foco.id;
+  el.hidden=false; el.innerHTML=visaoHTML(v); el.dataset.k=k;
+  if(abriu){ el.classList.remove('entra'); void el.offsetWidth; el.classList.add('entra'); }
+  const c=$('vsCorpo'); c.scrollTop=y;
+  if(v.filtro) realcar(c, v.filtro, mesma);
+  if(idFoco && $(idFoco)) $(idFoco).focus({preventScroll:true});
+}
+/* filtro livre: destaca as menores linhas/cartões que contêm o texto (sem acento, sem caixa) e rola até a primeira. */
+/* Rola só o contêiner (scrollIntoView também rolaria body/.app e a página inteira desceria). */
+function rolarAte(c, el){ const y=el.getBoundingClientRect().top - c.getBoundingClientRect().top + c.scrollTop - (c.clientHeight - Math.min(el.offsetHeight, c.clientHeight))/2; c.scrollTop=Math.max(0, y); }
+function realcar(c, filtro, semRolar){
+  const q=semAcento(filtro).trim(); if(!q) return;
+  const cand=[...c.querySelectorAll('tr,.ld,.kc,li,.ap-it,.card,.wscard')].filter(x=>semAcento(x.textContent).includes(q));
+  const min=cand.filter(x=>!cand.some(y=>y!==x && x.contains(y)));
+  min.forEach(x=>x.classList.add('vs-realce'));
+  if(min[0] && !semRolar) rolarAte(c, min[0]);
+}
+document.addEventListener('click', e=>{ const a=e.target.closest && e.target.closest('#side a.nav, #side button.nav'); if(a && CASCA.side){ CASCA.side=false; } }, true);
