@@ -280,8 +280,24 @@ function renderSide(){
     const aberto = CASCA.grupos[o.id] ?? !!aqui;
     return `<button type="button" class="grp" aria-expanded="${aberto}" aria-controls="grp-${o.id}" onclick="alternarGrupo('${o.id}',${aberto})" title="${o.nome} · ${stTxt(o)}">${icon('chevRight',14,'grp-chev')}<span class="dot" style="background:${stDot(o)}" aria-hidden="true"></span><span class="sess-t">${o.nome}</span>${n?`<span class="count" aria-label="${n} pendências">${n}</span>`:`<small>${o.status==='plan'?'orçando':o.progresso+'%'}</small>`}</button>
       <div class="grp-l" id="grp-${o.id}"${aberto?'':' hidden'}>${xs.length ? xs.map(sess).join('') : `<button type="button" class="nav sess sess-nova" onclick="novaSessao('${o.id}')">${icon('plus',14)}Começar uma conversa</button>`}</div>`; };
+  /* Lateral recolhida: um trilho de 64 px que mantém o que pede atenção (ponto de status + contador de cada obra). */
+  document.querySelector('.app').classList.toggle('lat-fechada', LAT.fechada);
+  if(LAT.fechada){
+    const obraRail = o => { const n=pendObra(o).length, aqui=atual && atual.escopo===o.id, x=ss.filter(y=>y.escopo===o.id)[0];
+      return `<button type="button" class="r-btn${aqui?' on':''}" title="${esc(o.nome)} · ${stTxt(o)}${n?' · '+n+' pendentes':''}" aria-label="${esc(o.nome)}" onclick="${x?`abrirSessao('${x.id}')`:`novaSessao('${o.id}')`}"><span class="r-ini">${o.nome.split(' ').filter(w=>w.length>2).slice(-2).map(w=>w[0]).join('')}</span><span class="r-dot" style="background:${stDot(o)}"></span>${n?`<span class="r-n">${n}</span>`:''}</button>`; };
+    const g=geral[0];
+    $('side').innerHTML = `
+    <button type="button" class="r-btn r-logo" onclick="recolherLateral(false)" title="Abrir a lateral (Ctrl+\\)" aria-label="Abrir a lateral" aria-expanded="false"><div class="logo">${icon('spark',17)}</div></button>
+    <button type="button" class="r-btn" onclick="novaSessao(escopoAtual())" title="Nova conversa" aria-label="Nova conversa">${icon('plus',18)}</button>
+    ${g?`<button type="button" class="r-btn${emC&&state.sessao===g.id?' on':''}" onclick="abrirSessao('${g.id}')" title="Geral · todas as obras" aria-label="Geral">${icon('message',18)}</button>`:''}
+    <div class="r-sep"></div>
+    ${OBRAS.map(obraRail).join('')}
+    <span class="sp"></span>
+    <button type="button" class="r-btn" onclick="recolherLateral(false)" title="Abrir a lateral (Ctrl+\\)" aria-label="Abrir a lateral">${icon('painel',18)}</button>`;
+    return;
+  }
   $('side').innerHTML = `
-    <div class="brand"><div class="logo">${icon('spark',17)}</div>Canteiro<span class="tag">protótipo</span></div>
+    <div class="brand"><div class="logo">${icon('spark',17)}</div>Canteiro<span class="tag" title="Protótipo: dados fictícios">demo</span><button type="button" class="side-fechar" onclick="recolherLateral(true)" title="Recolher a lateral (Ctrl+\\)" aria-label="Recolher a lateral" aria-expanded="true">${icon('painel',17)}</button></div>
     <button type="button" class="side-nova" onclick="novaSessao(escopoAtual())">${icon('plus',16)}Nova conversa</button>
     <nav class="side-bloco" aria-label="Conversas">
       ${geral.map(sess).join('')}
@@ -292,6 +308,14 @@ function renderSide(){
       <button type="button" class="foot" id="perfilBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="perfilMenu" onclick="menuPerfil()"><span class="av" aria-hidden="true">RZ</span><span class="foot-t">Rizzi<br><span>Construtora RZ · Admin</span></span>${icon('more',16)}</button>
     </div>`;
 }
+/* Recolher a lateral (desktop): a escolha fica guardada no navegador. */
+const LAT = {fechada: (()=>{ try{ return localStorage.getItem('canteiro.lateral')==='fechada'; }catch(e){ return false; } })()};
+function recolherLateral(on){
+  LAT.fechada=!!on; try{ localStorage.setItem('canteiro.lateral', on?'fechada':'aberta'); }catch(e){}
+  renderSide();
+  const b=$('side').querySelector(on?'.r-logo':'.side-fechar'); if(b) b.focus({preventScroll:true});
+}
+document.addEventListener('keydown', e=>{ if((e.ctrlKey||e.metaKey) && e.key==='\\' && innerWidth>=1100){ e.preventDefault(); recolherLateral(!LAT.fechada); } });
 function alternarGrupo(id, aberto){ CASCA.grupos[id]=!aberto; renderSide(); const b=$('side').querySelector(`[aria-controls="grp-${id}"]`); if(b) b.focus(); }
 /* Menu do perfil (rodapé da lateral): o que é do protótipo, fora do caminho do trabalho. */
 function menuPerfil(){

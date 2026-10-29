@@ -1,5 +1,6 @@
 /* ===================== ÍCONES (traço, no estilo Lucide; inline para não depender de CDN) ===================== */
 const ICONS = {
+  painel:'<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/>',
   spark:'<rect x="3" y="13" width="8" height="7" rx="1.2"/><rect x="13" y="13" width="8" height="7" rx="1.2"/><rect x="8" y="4" width="8" height="7" rx="1.2"/>',
   message:'<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
   building:'<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/>',
