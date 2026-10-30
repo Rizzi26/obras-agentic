@@ -28,6 +28,14 @@ jobs:
           uv pip install -p .venv -e ".[dev]"
           .venv/bin/pytest -q
 
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # os três idiomas da landing são gerados de modelo.html + i18n/*.json; HTML editado à mão se perde
+      - name: landing gerada em dia
+        run: python3 apps/site/gerar.py --conferir
+
   api:
     # ubuntu-latest já roda kernel 6.19+, que esta versão do mongod recusa ("Linux kernel versions 6.19 and newer has a
     # known incompatibility"). Voltar para ubuntu-latest quando a imagem do Mongo corrigir.
