@@ -19,7 +19,7 @@ mercado e estratégia ficam em `pesquisa/` (ignorada pelo git).
 `canteiro_dominio.armazenamento`; o resto do código nunca importa `pymongo`. A porta só aceita o que o Firestore aceita:
 igualdade e `in` (≤ 30), desigualdade em um campo só, ordenação começando por esse campo, limite. Sem joins, sem regex,
 sem aggregation pipeline (relatório = projeção pré-calculada ou soma feita na API). Unicidade e idempotência pelo **ID do
-documento**. Transação: leia tudo antes de escrever, ≤ 500 escritas. Nada de lista que cresce sem limite dentro de um
+documento**. Transação: leia tudo antes de escrever, ≤ 500 escritas. **Todo documento que a transação lê para decidir, ela também grava** (ao menos uma versão/`atualizado_em`): no Firestore a leitura entra no controle de conflito, no Mongo não, e é essa regra que deixa os dois com o mesmo comportamento. Nada de lista que cresce sem limite dentro de um
 documento. Quantidade em milésimos e dinheiro em centavos (inteiros); IDs UUIDv7 gerados por nós. Um mesmo conjunto de
 testes de contrato roda contra o adaptador em memória e o do Mongo (e, depois, o do Firestore).
 
