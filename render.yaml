@@ -28,6 +28,8 @@ services:
         sync: false
       - key: SEED_ADMIN_EMAIL
         sync: false
+      - key: CORS_ORIGENS         # quem chama POST /lista-espera do navegador (a landing da Aprumo). Nunca "*".
+        value: https://aprumo-site.vercel.app,https://aprumo.vercel.app
 
   - type: web
     name: canteiro-agente
