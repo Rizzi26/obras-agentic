@@ -830,7 +830,7 @@ function tabComp(o){
     ${falta.length?`<div class="card sup-tab" style="padding:0"><table>
       <thead><tr><th class="ck"><span class="sr-only">Incluir no pedido</span></th><th>Insumo</th><th>Conta</th><th>Fornecedor recomendado</th><th class="num">Total</th></tr></thead>
       <tbody>${falta.map(x=>`<tr class="click" onclick="openComp('${x.c.id}')"><td class="ck"><input type="checkbox" aria-label="Incluir ${esc(x.c.nome)} no pedido" ${sel.has(x.c.id)?'checked':''} onclick="event.stopPropagation();toggleComp('${o.id}','${x.c.id}',this.checked)"></td>
-        <td>${nomeCel(x)}</td><td>${linhaConta(x.k)}</td><td>${fornCel(x)}</td><td class="num"><b>${brl(fornRec(o.id,x.c).p*x.k.comprar)}</b></td></tr>`).join('')}</tbody></table>
+        <td>${nomeCel(x)}</td><td>${linhaConta(x.k)}</td><td>${fornCel(x)}</td><td class="num"><b>${brl(fornRec(o.id,x.c).p*x.k.comprar)}</b>${typeof buscarPreco==='function'?' '+menuMais([{label:`${icon('busca',15)}Buscar preço`, onclick:`buscarPreco('${x.inv}','${o.id}')`}], {rotulo:`Mais ações · ${esc(x.c.nome)}`}):''}</td></tr>`).join('')}</tbody></table>
       <div class="sup-pe-bloco"><span class="sm mut">Comprar = precisa até o fim − saldo − a caminho − em cotação − transferência sugerida. Clique no insumo para comparar fornecedores.</span><span class="sp"></span>
         <button class="btn amb" id="btnPedido" onclick="pedirSel('${o.id}')">${rotPedido(o.id)}</button></div></div>`
       :`<div class="card sup-vazio">${icon('checkCircle',18)}<span>Tudo o que a obra precisa já está no almoxarifado, a caminho, em cotação ou vem de outra obra.</span></div>`}</section>
@@ -1669,7 +1669,7 @@ async function enviar(texto){
 function statusCurto(o){ return o.status==='plan' ? 'em orçamento' : o.atraso>0 ? `<span class="vs-atraso">${o.atraso} dias de atraso</span>` : stTxt(o); }
 function corpoVisao(v){
   const o=v.obra && OBRAS.find(x=>x.id===v.obra);
-  return o ? `<div class="page vs-page">${(o.status==='plan' && v.chave!=='hoje') ? emOrcamento(o) : (TAB_FNS[v.chave]||TAB_FNS.hoje)(o)}</div>` : (VIEWS[v.chave]||VIEWS.hub)();
+  return o ? `<div class="page vs-page">${(o.status==='plan' && v.chave!=='hoje' && v.chave!=='clima')   /* o clima vale mesmo em orçamento (ex.: terraplenagem do galpão) */ ? emOrcamento(o) : (TAB_FNS[v.chave]||TAB_FNS.hoje)(o)}</div>` : (VIEWS[v.chave]||VIEWS.hub)();
 }
 const filtroHTML = v => v.filtro ? `<div class="vs-filtro" role="status">${icon('list',14)}<span>Destacando <b>${esc(v.filtro)}</b></span><button type="button" class="link" onclick="limparFiltroVisao()">Tirar o destaque</button></div>` : '';
 function desenharVisao(){
