@@ -404,15 +404,16 @@ function renderHub(){
    numa aba com GRUPOS[i].telas.push([chave, rótulo]). As setas chamam pelo nome na hora para que uma feature possa
    redefinir a função original (ex.: tabEquipe = function(o){...}). */
 const TABS = [['hoje','checkCircle','Hoje'],['componentes','bricks','Falta comprar'],['kanban','package','Pedidos'],['inventario','archive','Almoxarifado'],['entreobras','swap','Entre obras'],['overview','chart','Orçamento'],['prazos','clock','Cronograma'],['equipe','users','Equipe']];
-const TAB_FNS = {hoje:o=>tabHoje(o), overview:o=>tabOverview(o), componentes:o=>tabComp(o), kanban:o=>tabKanban(o), inventario:o=>tabInv(o), entreobras:o=>tabEntreObras(o), equipe:o=>tabEquipe(o), prazos:o=>tabPrazos(o)};
+/* clima e mercado: as telas vêm de js/features/clima.js e mercado.js (que redefinem TAB_FNS.clima / .mercado). */
+const TAB_FNS = {clima:o=>`<p class="mut">Clima ainda não carregou.</p>`, mercado:o=>`<p class="mut">Busca de preço ainda não carregou.</p>`, hoje:o=>tabHoje(o), overview:o=>tabOverview(o), componentes:o=>tabComp(o), kanban:o=>tabKanban(o), inventario:o=>tabInv(o), entreobras:o=>tabEntreObras(o), equipe:o=>tabEquipe(o), prazos:o=>tabPrazos(o)};
 
 /* Abas de 1º nível: 4, cada uma com o contador do que pede ação e as telas como segmento de 2º nível.
    A 1ª tela de cada aba é a que abre por padrão. */
 const GRUPOS = [
   {k:'hoje',        label:'Hoje',        icon:'checkCircle', telas:[['hoje','Hoje']],                                                                   pend:o=>pendHoje(o)},
-  {k:'suprimentos', label:'Suprimentos', icon:'package',     telas:[['componentes','Falta comprar'],['kanban','Pedidos'],['inventario','Almoxarifado'],['entreobras','Entre obras']], pend:o=>pendSuprimentos(o)},
+  {k:'suprimentos', label:'Suprimentos', icon:'package',     telas:[['componentes','Falta comprar'],['mercado','Buscar preço'],['kanban','Pedidos'],['inventario','Almoxarifado'],['entreobras','Entre obras']], pend:o=>pendSuprimentos(o)},
   {k:'custos',      label:'Custos',      icon:'chart',       telas:[['overview','Orçamento'],['medicoes','Medições']],                             pend:o=>pendCustos(o)},
-  {k:'execucao',    label:'Execução',    icon:'clock',       telas:[['prazos','Cronograma'],['diario','Diário'],['equipe','Equipe']],              pend:o=>pendExecucao(o)},
+  {k:'execucao',    label:'Execução',    icon:'clock',       telas:[['prazos','Cronograma'],['clima','Clima'],['diario','Diário'],['equipe','Equipe']],              pend:o=>pendExecucao(o)},
 ];
 const grupoDe = tela => GRUPOS.find(g=>g.telas.some(t=>t[0]===tela));
 
@@ -877,6 +878,7 @@ function cartaoLote(l, op={}){
     <b>${l.item}</b><div class="kc-q">${l.q} · ${l.forn}</div>
     <div class="kc-ef">${ab?`<span class="t-perda">abate ${brl(ab)}</span> · ${num(l.medido)} de ${num(l.qn)} ${l.un} medidos`:l.eta}</div>
     ${lig.length?`<div class="kc-lig">${icon('swap',12)}ligado a ${lig.map(x=>docRef(x.id)).join(', ')}</div>`:''}
+    ${typeof rastreioCard==='function' ? rastreioCard(l) : ''}
     <div class="kc-pe"><b class="kc-v">${brl(l.v)}</b>${op.semAcao?'':botaoLote(l,{pri:false})}</div></article>`;
 }
 const ordemLotes = ls => [...ls].sort((a,b)=>(b.late?1:0)-(a.late?1:0));
@@ -1307,9 +1309,9 @@ function render(){
 const CASCA = {ultima:null, obraFoco:null, side:false, focar:false, ctx:null, pensando:false, rascunho:'', grupos:{}, rolagem:null};
 ICONS.book = ICONS.book || '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/>';
 
-const VISAO_ROT = {hoje:'Hoje', componentes:'Falta comprar', kanban:'Pedidos', inventario:'Almoxarifado', entreobras:'Entre obras', overview:'Orçamento', medicoes:'Medições', prazos:'Cronograma', diario:'Diário', equipe:'Equipe', aprovacoes:'Pendências', estoque:'Entre obras · todas', hub:'Todas as obras'};
-const VISAO_IC = {hoje:'checkCircle', componentes:'bricks', kanban:'package', inventario:'archive', entreobras:'swap', overview:'chart', medicoes:'ruler', prazos:'clock', diario:'book', equipe:'users', aprovacoes:'checkCircle', estoque:'swap', hub:'building'};
-const VISAO_ALIAS = {hoje:'pendencias resumo', componentes:'comprar compras insumos falta', kanban:'pedidos compras entregas chega', inventario:'almoxarifado estoque saldo', entreobras:'transferencia sobra', overview:'orcamento custos verba', medicoes:'medicao empreiteiro pagamento', prazos:'cronograma prazo atraso', diario:'diario rdo', equipe:'equipe pessoal aso', aprovacoes:'aprovacoes pendencias propostas', estoque:'estoque entre obras transferencia', hub:'obras todas'};
+const VISAO_ROT = {clima:'Clima', mercado:'Buscar preço', hoje:'Hoje', componentes:'Falta comprar', kanban:'Pedidos', inventario:'Almoxarifado', entreobras:'Entre obras', overview:'Orçamento', medicoes:'Medições', prazos:'Cronograma', diario:'Diário', equipe:'Equipe', aprovacoes:'Pendências', estoque:'Entre obras · todas', hub:'Todas as obras'};
+const VISAO_IC = {clima:'nuvem', mercado:'busca', hoje:'checkCircle', componentes:'bricks', kanban:'package', inventario:'archive', entreobras:'swap', overview:'chart', medicoes:'ruler', prazos:'clock', diario:'book', equipe:'users', aprovacoes:'checkCircle', estoque:'swap', hub:'building'};
+const VISAO_ALIAS = {clima:'clima tempo chuva previsao janela', mercado:'mercado preco loja buscar comprar sinapi', hoje:'pendencias resumo', componentes:'comprar compras insumos falta', kanban:'pedidos compras entregas chega', inventario:'almoxarifado estoque saldo', entreobras:'transferencia sobra', overview:'orcamento custos verba', medicoes:'medicao empreiteiro pagamento', prazos:'cronograma prazo atraso', diario:'diario rdo', equipe:'equipe pessoal aso', aprovacoes:'aprovacoes pendencias propostas', estoque:'estoque entre obras transferencia', hub:'obras todas'};
 const ORDEM_VISOES = ['hoje','componentes','kanban','inventario','overview','medicoes','prazos','diario','equipe'];
 const visoesObra = () => [...ORDEM_VISOES.filter(k=>TAB_FNS[k]), ...Object.keys(TAB_FNS).filter(k=>!ORDEM_VISOES.includes(k) && k!=='entreobras')];
 const visoesGlobais = () => ['aprovacoes','estoque','hub'].filter(ehVisaoGlobal).concat(Object.keys(VIEWS).filter(k=>ehVisaoGlobal(k) && !['aprovacoes','estoque','hub'].includes(k)));

@@ -464,8 +464,14 @@ const INTENCOES = [
 ];
 const VAGO = /sobre isto|sobre isso|sobre esta|sobre essa|^sobre |explica|me resume|resuma|o que (e|significa|quer dizer) isso|o que estou vendo|nesta (tela|visao)/;
 
+/* Extensões de intenção vindas de outros arquivos (clima.js, mercado.js): CV_EXT.push({nome, casa:(t)=>bool, responde:(t, sessao, ob)=>msg[]}).
+   São testadas antes das intenções daqui; t já vem normalizado (sem acento, minúsculo). */
+const CV_EXT = [];
 function rotear(texto, sessao){
   const t=cvNorm(texto), vis=visaoAberta(sessao);
+  { const obX = obraDe(sessao.escopoMsg) || obraNoTexto(t) || (sessao.escopo && sessao.escopo!=='geral' ? sessao.escopo : null);
+    const ext = CV_EXT.find(x=>{ try{ return x.casa(t); }catch(e){ return false; } });
+    if(ext){ try{ const r=ext.responde(t, sessao, obX); if(r && r.length) return r; }catch(e){ console.error(e); } } }
   /* 6. Perguntar sobre isto: a semente (CV.sobre) ou um texto vago com a visão aberta dá o contexto (visão, obra, filtro) */
   const vNoTexto = (VISAO_RE.find(([re])=>re.test(t))||[])[1];
   const c0 = sessao.contexto && sessao.contexto.chave ? {chave:sessao.contexto.chave, ob:sessao.contexto.obra, filtro:sessao.contexto.filtro} : CV.sobre;

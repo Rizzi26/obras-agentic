@@ -1,5 +1,11 @@
 /* ===================== ÍCONES (traço, no estilo Lucide; inline para não depender de CDN) ===================== */
 const ICONS = {
+  nuvem:'<path d="M7 18a4 4 0 0 1-.6-7.95A6 6 0 0 1 18 9.5a4.25 4.25 0 0 1-.5 8.5Z"/>',
+  sol:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  chuva:'<path d="M7 15a4 4 0 0 1-.6-7.95A6 6 0 0 1 18 6.5a4.25 4.25 0 0 1-.5 8.5"/><path d="M8 19l-1 2M12 19l-1 2M16 19l-1 2"/>',
+  vento:'<path d="M3 8h11a3 3 0 1 0-3-3M3 12h16a3 3 0 1 1-3 3M3 16h7"/>',
+  busca:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  externo:'<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   painel:'<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/>',
   spark:'<rect x="3" y="13" width="8" height="7" rx="1.2"/><rect x="13" y="13" width="8" height="7" rx="1.2"/><rect x="8" y="4" width="8" height="7" rx="1.2"/>',
   message:'<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
