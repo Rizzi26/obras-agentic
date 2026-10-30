@@ -1,0 +1,51 @@
+# Render (plano gratuito): API central e serviço do agente. A web fica na Vercel (projeto com raiz apps/web).
+# Os serviços gratuitos dormem após 15 min sem uso e levam ~30–60 s para acordar.
+# Segredos: sync:false = preencha no painel do Render. Nunca coloque valor aqui (o repositório é público).
+services:
+  - type: web
+    name: canteiro-api
+    runtime: docker
+    plan: free
+    region: virginia
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /saude
+    autoDeploy: true
+    buildFilter:
+      paths: ["apps/api/**", "packages/dominio/**"]
+    envVars:
+      - key: MONGO_URL            # string do Atlas M0 (mongodb+srv://…)
+        sync: false
+      - key: MONGO_DB
+        value: canteiro
+      - key: JWT_SEGREDO
+        generateValue: true
+      - key: TOKEN_SERVICO_AGENTE # o MESMO valor no canteiro-agente
+        sync: false
+      - key: CHAVE_CIFRA          # 32 bytes em base64
+        sync: false
+      - key: PROXY_SEGREDO        # o MESMO valor na Vercel (projeto da web)
+        sync: false
+      - key: SEED_ADMIN_EMAIL
+        sync: false
+
+  - type: web
+    name: canteiro-agente
+    runtime: docker
+    plan: free
+    region: virginia
+    dockerfilePath: ./apps/agente/Dockerfile
+    dockerContext: .
+    healthCheckPath: /saude
+    autoDeploy: true
+    buildFilter:
+      paths: ["apps/agente/**", "packages/dominio/**"]
+    envVars:
+      - key: API_URL              # URL pública do canteiro-api (https://canteiro-api.onrender.com)
+        sync: false
+      - key: TOKEN_SERVICO_AGENTE
+        sync: false
+      - key: MODELO_ROTEIRO       # 1 = demo sem chave (modelo de roteiro, 0 tokens). Para o Claude: 0 + ANTHROPIC_API_KEY
+        value: "1"
+      - key: ANTHROPIC_API_KEY
+        sync: false
