@@ -10,7 +10,7 @@ services:
     dockerfilePath: ./apps/api/Dockerfile
     dockerContext: .
     healthCheckPath: /saude
-    autoDeploy: true
+    autoDeployTrigger: checksPass   # só publica depois que o CI do GitHub (.github/workflows/ci.yml) passar
     buildFilter:
       paths: ["apps/api/**", "packages/dominio/**"]
     envVars:
@@ -37,7 +37,7 @@ services:
     dockerfilePath: ./apps/agente/Dockerfile
     dockerContext: .
     healthCheckPath: /saude
-    autoDeploy: true
+    autoDeployTrigger: checksPass   # só publica depois que o CI do GitHub (.github/workflows/ci.yml) passar
     buildFilter:
       paths: ["apps/agente/**", "packages/dominio/**"]
     envVars:
