@@ -29,7 +29,9 @@ jobs:
           .venv/bin/pytest -q
 
   api:
-    runs-on: ubuntu-latest
+    # ubuntu-latest já roda kernel 6.19+, que esta versão do mongod recusa ("Linux kernel versions 6.19 and newer has a
+    # known incompatibility"). Voltar para ubuntu-latest quando a imagem do Mongo corrigir.
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
